@@ -1,0 +1,5 @@
+[wokwi]
+version = 1
+elf = "build/Debug/01-blink-env.elf"
+firmware = "build/Debug/stm32-learning.elf"
+gdbServerPort = 3333
