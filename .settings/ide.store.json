@@ -2,8 +2,9 @@
   "source": {
     "sourceType": "STM32CubeMX"
   },
-  "device": "STM32F103C8T6",
-  "core": "Cortex-M3",
+  "board": "NUCLEO-C031C6",
+  "device": "STM32C031C6T6",
+  "core": "Cortex-M0+",
   "order": 0,
   "toolchain": "GCC"
 }

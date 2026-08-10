@@ -1,48 +1,45 @@
-# 01 — Mise en place de l'environnement STM32
+# 02 — GPIO : bouton + LED
 
 ## Objectif
-Valider la chaine complete : STM32CubeMX + STM32CubeIDE for VS Code + toolchain GCC ARM +
-simulation Wokwi, avant d'attaquer le programme de formation STM32.
+Lire un bouton en entree (pull-up interne) et piloter la LED embarquee en sortie,
+en acces registre direct.
 
 ## Cible
-STM32F103C8T6 (Blue Pill), simule sur Wokwi — aucune carte physique.
+STM32C031C6 (Nucleo-64), simule sur Wokwi.
 
-## Outils installes
-- STM32CubeMX (lance depuis le panneau STM32CUBE de VS Code) : utilise uniquement pour fournir
-  la structure de projet et les headers CMSIS (Drivers/CMSIS) — aucun peripherique configure via
-  l'outil graphique, aucun code HAL utilise.
-- STM32CubeIDE for Visual Studio Code (extension pack STMicroelectronics)
-- Wokwi for VS Code
+## Configuration
+- PA5 (LD4, LED embarquee) : sortie push-pull
+- PC13 : entree, pull-up interne, bouton externe simule (wokwi-pushbutton) cable dessus
+- Horloge : HSE -> SYSCLK (config par defaut generee par CubeMX pour cette carte)
 
-## Pourquoi STM32CubeMX ici
-Le mode "Create empty project" de l'extension ne fournit pas les headers CMSIS (limitation connue,
-signalee sur le forum STMicroelectronics). Passer par STM32CubeMX, sans configurer de peripherique,
-recupere Drivers/CMSIS + Core/Inc correctement, sans imposer le HAL.
+## Pourquoi un bouton externe
+Le bouton utilisateur embarque (B1) de la carte simulee ne reagit pas au clic dans
+Wokwi for VS Code (limitation apparente du simulateur, pas du firmware) — bouton
+externe cable sur PC13 en remplacement.
 
 ## Structure
-- `Core/Src/main.c` : blink PC13 en acces registre direct (CMSIS RCC/GPIO), ecrit a la main dans
-  les sections `USER CODE BEGIN 2` / `USER CODE BEGIN WHILE`
-- `Drivers/CMSIS/` : headers generes par CubeMX (non modifies)
-- `wokwi.toml` : pointe Wokwi vers le binaire ELF genere
-- `diagram.json` : declare la carte Blue Pill simulee
+- `Core/Src/main.c` : lecture/ecriture registre directe, pas d'interruption
+- `diagram.json` : Nucleo-C031C6 + bouton poussoir externe sur PC13/GND
 
 ## Compilation
-Preset CMake **Debug**
+Preset CMake Debug
 
 ## Test
-`Wokwi: Start Simulator` -> la LED PC13 clignote
+Wokwi: Start Simulator -> maintenir le bouton = LED allumee, relacher = LED eteinte
 
 ## Difficultes rencontrees
-"Create empty project" : erreur de compilation `stm32f1xx.h: No such file or directory`
-(headers CMSIS absents de ce mode).
+Premiere version basee sur un exemple BSP genere (interruption EXTI) : double bascule
+par appui (front montant + descendant).
 
 ## Solution
-Regeneration du projet via STM32CubeMX (toolchain CMake, aucun peripherique configure) pour
-recuperer les headers CMSIS, en gardant un code 100% ecrit a la main (pas de HAL).
+Retour a une lecture registre en boucle (polling), sans interruption ni BSP
 
 ## Notions apprises
-- Deux chemins de creation de projet dans STM32CubeIDE for VS Code : "empty project" vs projet
-  genere par CubeMX, et la limite du premier (pas de CMSIS inclus)
-- Acces registre direct via CMSIS (RCC, GPIO) sans passer par HAL
-- Sections USER CODE d'un projet genere par CubeMX (preservees a la regeneration)
-- Configuration Wokwi pour VS Code (wokwi.toml + diagram.json)
+- MODER/PUPDR (GPIOv2, familles C0/G0/L0) vs CRL/CRH (GPIOv1, famille F1)
+- RCC_IOPENR vs RCC_APB2ENR selon la famille
+- Difference entre logique de niveau (polling) et logique par interruption/toggle
+- Le bouton embarque d'une carte simulee n'est pas forcement cliquable dans Wokwi
+
+## Limites / ameliorations possibles
+Pas d'anti-rebond — non necessaire ici (lecture de niveau, pas de comptage d'evenements).
+Gestion propre par interruption EXTI prevue en phase 3.
