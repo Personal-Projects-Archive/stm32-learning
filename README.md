@@ -1,27 +1,24 @@
-# 03 — Clocks : HSI, HSIDIV, HCLK/PCLK1
+# 04 — Timers : TIM3 periodique + interruption
 
 ## Objectif
-Comprendre l'arbre d'horloge du STM32C0 (pas de PLL, un seul bus APB) et verifier
-concretement l'effet d'un changement de frequence sur un delai logiciel.
+Configurer TIM3 en mode periodique (PSC/ARR) et declencher une interruption
+d'update pour piloter la LED, plutot qu'une boucle logicielle.
 
-## Cible
-STM32C031C6 (Nucleo-64), simule sur Wokwi.
-
-## Configuration CubeMX
-- SYSCLK source : HSI (48 MHz fixe)
-- HSIDIV : teste a 1 (SYSCLK 48 MHz) puis 8 (SYSCLK 6 MHz)
-- HPRE / PPRE1 : /1 (HCLK = PCLK1 = SYSCLK)
+## Configuration
+- TIM3, horloge APB1 (48 MHz)
+- PSC = 47999, ARR = 999 -> update event a 1 Hz
+- NVIC_EnableIRQ(TIM3_IRQn)
 
 ## Structure
-- `Core/Src/main.c` : blink PA5 par boucle logicielle (delai en cycles CPU, pas HAL_Delay)
+- `Core/Src/main.c` : init timer (USER CODE BEGIN 2), handler d'interruption
+  TIM3_IRQHandler (USER CODE BEGIN 4)
 
 ## Test
-Comparaison visuelle de la vitesse de clignotement entre HSIDIV=1 et HSIDIV=8
-(rapport attendu : x8)
+Clignotement LD4 a ~1 Hz, ou verification par debugger (breakpoint dans le handler,
+watch sur TIM3->CNT) si le rendu visuel n'est pas fiable en simulation.
 
 ## Notions apprises
-- HSI/HSE/LSI/LSE, HSIDIV, SYSCLK, HCLK, PCLK1
-- Pas de PLL sur la famille C0 (contrairement a F1/F4)
-- Un seul bus APB sur cette famille (pas de split APB1/APB2)
-- Pourquoi HAL_Delay() ne convient pas pour observer un changement d'horloge
-  (recalibrage automatique via SysTick) — boucle logicielle utilisee a la place
+- PSC / ARR / update event / UIF
+- Double activation necessaire : DIER (peripherique) + NVIC (coeur)
+- EGR/UG pour precharger les registres a l'init
+- Le timer materiel semble mieux respecter le timing simule qu'une boucle logicielle

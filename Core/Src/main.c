@@ -12,10 +12,17 @@ int main(void)
   GPIOA->MODER &= ~GPIO_MODER_MODE5;
   GPIOA->MODER |= GPIO_MODER_MODE5_0;
 
+  __HAL_RCC_TIM3_CLK_ENABLE();
+  TIM3->PSC = 47999;              /* 48 MHz / 48000 = 1 kHz */
+  TIM3->ARR = 999;                /* 1 kHz / 1000 = 1 Hz */
+  TIM3->EGR |= TIM_EGR_UG;        /* precharge PSC/ARR immediatement */
+  TIM3->SR &= ~TIM_SR_UIF;        /* efface le flag que l'update forcee vient de mettre */
+  TIM3->DIER |= TIM_DIER_UIE;     /* autorise l'interruption d'update */
+  TIM3->CR1 |= TIM_CR1_CEN;       /* demarre le compteur */
+  NVIC_EnableIRQ(TIM3_IRQn);      /* autorise cote coeur (NVIC) */
+
   while (1)
   {
-    GPIOA->ODR ^= GPIO_ODR_OD5;
-    for (volatile uint32_t i = 0; i < 1000000; i++) { __NOP(); }
   }
 }
 
@@ -28,8 +35,7 @@ void SystemClock_Config(void)
 
   RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI;
   RCC_OscInitStruct.HSIState = RCC_HSI_ON;
-  RCC_OscInitStruct.HSIDiv = RCC_HSI_DIV1;                 /* 48 / 1 = 48 MHz -> Test A */
-  //RCC_OscInitStruct.HSIDiv = RCC_HSI_DIV8;                 /* 48 / 8 = 6 MHz -> Test B */
+  RCC_OscInitStruct.HSIDiv = RCC_HSI_DIV1;
   RCC_OscInitStruct.HSICalibrationValue = RCC_HSICALIBRATION_DEFAULT;
   if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
   {
@@ -58,3 +64,14 @@ void Error_Handler(void)
   __disable_irq();
   while (1) {}
 }
+
+/* USER CODE BEGIN 4 */
+void TIM3_IRQHandler(void)
+{
+  if (TIM3->SR & TIM_SR_UIF)
+  {
+    TIM3->SR &= ~TIM_SR_UIF;
+    GPIOA->ODR ^= GPIO_ODR_OD5;
+  }
+}
+/* USER CODE END 4 */
