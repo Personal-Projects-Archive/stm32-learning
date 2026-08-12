@@ -5,35 +5,35 @@ static void MX_GPIO_Init(void);
 
 int main(void)
 {
-  HAL_Init();
-  SystemClock_Config();
-  MX_GPIO_Init();
+  HAL_Init();              // init HAL, Flash, SysTick (utilise par HAL_GetTick)
+  SystemClock_Config();    // configure l'horloge (HSI, voir phase 3)
+  MX_GPIO_Init();          // active les horloges des ports GPIOA et GPIOC
 
-  /* PA6 en Alternate Function, AF1 = TIM3_CH1 */
-  GPIOA->MODER &= ~GPIO_MODER_MODE6;
-  GPIOA->MODER |= GPIO_MODER_MODE6_1;
-  GPIOA->AFR[0] &= ~GPIO_AFRL_AFSEL6;
-  GPIOA->AFR[0] |= (1 << GPIO_AFRL_AFSEL6_Pos);
+  // PA5 (LD4, LED embarquee) en sortie push-pull
+  GPIOA->MODER &= ~GPIO_MODER_MODE5;
+  GPIOA->MODER |= GPIO_MODER_MODE5_0;
 
-  __HAL_RCC_TIM3_CLK_ENABLE();
-  TIM3->PSC = 47;
-  TIM3->ARR = 999;
-  TIM3->CCR1 = 0;                                     /* depart eteint */
-  TIM3->CCMR1 |= TIM_CCMR1_OC1M_2 | TIM_CCMR1_OC1M_1;  /* PWM mode 1 */
-  TIM3->CCMR1 |= TIM_CCMR1_OC1PE;
-  TIM3->CR1   |= TIM_CR1_ARPE;
-  TIM3->CCER  |= TIM_CCER_CC1E;
-  TIM3->DIER  |= TIM_DIER_UIE;                         /* interruption d'update pour piloter le fondu */
-  TIM3->EGR   |= TIM_EGR_UG;
-  TIM3->SR    &= ~TIM_SR_UIF;
-  TIM3->CR1   |= TIM_CR1_CEN;
-  NVIC_EnableIRQ(TIM3_IRQn);
+  // PC13 (bouton externe) en entree, pull-up interne active
+  GPIOC->MODER &= ~GPIO_MODER_MODE13;
+  GPIOC->PUPDR &= ~GPIO_PUPDR_PUPD13;
+  GPIOC->PUPDR |= GPIO_PUPDR_PUPD13_0;
 
+  // Route la ligne EXTI13 sur le port C (pas de SYSCFG sur cette famille)
+  EXTI->EXTICR[3] &= ~(0xFFUL << 8);
+  EXTI->EXTICR[3] |= (2UL << 8);     // 2 = port C
+
+  EXTI->FTSR1 |= (1UL << 13);        // declenche sur front descendant uniquement
+  EXTI->IMR1  |= (1UL << 13);        // demasque la ligne 13 cote peripherique
+  NVIC_EnableIRQ(EXTI4_15_IRQn);     // autorise la ligne cote coeur (NVIC)
+
+  // Rien a faire ici : toute la logique se passe dans l'interruption
+  // (voir Core/Src/stm32c0xx_it.c, fonction EXTI4_15_IRQHandler)
   while (1)
   {
   }
 }
 
+// Configure l'horloge systeme sur HSI (voir phase 3 pour le detail)
 void SystemClock_Config(void)
 {
   RCC_OscInitTypeDef RCC_OscInitStruct = {0};
@@ -43,7 +43,7 @@ void SystemClock_Config(void)
 
   RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI;
   RCC_OscInitStruct.HSIState = RCC_HSI_ON;
-  RCC_OscInitStruct.HSIDiv = RCC_HSI_DIV1;
+  RCC_OscInitStruct.HSIDiv = RCC_HSI_DIV1;              // 48 MHz
   RCC_OscInitStruct.HSICalibrationValue = RCC_HSICALIBRATION_DEFAULT;
   if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
   {
@@ -62,35 +62,16 @@ void SystemClock_Config(void)
   }
 }
 
+// Active les horloges des ports GPIO utilises (LED sur A, bouton sur C)
 static void MX_GPIO_Init(void)
 {
   __HAL_RCC_GPIOA_CLK_ENABLE();
+  __HAL_RCC_GPIOC_CLK_ENABLE();
 }
 
+// Boucle d'erreur : coupe les interruptions et bloque le programme
 void Error_Handler(void)
 {
   __disable_irq();
   while (1) {}
 }
-
-/* USER CODE BEGIN 4 */
-void TIM3_IRQHandler(void)
-{
-  static int16_t step = 1;
-  static uint16_t divider = 0;
-
-  if (TIM3->SR & TIM_SR_UIF)
-  {
-    TIM3->SR &= ~TIM_SR_UIF;
-
-    divider++;
-    if (divider >= 5)          /* 1 pas tous les 5 update events (5 ms a 1 kHz) */
-    {
-      divider = 0;
-      TIM3->CCR1 += step;
-      if (TIM3->CCR1 >= TIM3->ARR) { step = -1; }
-      if (TIM3->CCR1 == 0)         { step = 1;  }
-    }
-  }
-}
-/* USER CODE END 4 */

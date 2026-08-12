@@ -150,6 +150,19 @@ void EXTI4_15_IRQHandler(void)
   /* USER CODE END EXTI4_15_IRQn 0 */
   BSP_PB_IRQHandler(BUTTON_USER);
   /* USER CODE BEGIN EXTI4_15_IRQn 1 */
+  static uint32_t last_tick = 0;    // dernier appui valide accepte
+  uint32_t now = HAL_GetTick();     // horodatage courant (ms depuis le boot, via SysTick)
+
+  if (EXTI->FPR1 & (1UL << 13))
+  {
+    EXTI->FPR1 = (1UL << 13);       // efface le flag pending, obligatoire avant de sortir
+
+    if ((now - last_tick) > 200)    // ignore tout appui a moins de 200ms du precedent
+    {
+      GPIOA->ODR ^= GPIO_ODR_OD5;   // bascule la LED
+      last_tick = now;
+    }
+  }
 
   /* USER CODE END EXTI4_15_IRQn 1 */
 }

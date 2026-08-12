@@ -4,11 +4,17 @@
   "editor": "wokwi",
   "parts": [
     { "type": "board-st-nucleo-c031c6", "id": "nucleo", "top": 0, "left": 0, "attrs": {} },
-    { "type": "wokwi-led", "id": "led1", "top": 322.8, "left": 90.2, "attrs": { "color": "red" } }
+    {
+      "type": "wokwi-pushbutton",
+      "id": "button1",
+      "top": 227,
+      "left": -86.4,
+      "attrs": { "color": "green" }
+    }
   ],
   "connections": [
-    [ "led1:A", "nucleo:PA6", "green", [ "v9.6", "h163.2", "v-192.83" ] ],
-    [ "led1:C", "nucleo:GND.4", "black", [ "v9.6", "h-124.4", "v-154.43" ] ]
+    [ "nucleo:PC13", "button1:1.r", "green", [ "h0" ] ],
+    [ "nucleo:GND.4", "button1:2.l", "black", [ "h-39.38", "v-18.37", "h-76.8", "v57.4" ] ]
   ],
   "dependencies": {}
 }

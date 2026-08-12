@@ -1,24 +1,37 @@
-# 04 partie 3 — Timers : PWM dynamique, effet respiration
+# 05 — Interruptions : EXTI13 sur bouton PC13
 
 ## Objectif
-Faire varier CCR1 dans le temps via l'interruption d'update de TIM3, pour un fondu
-progressif de luminosite, sans boucle logicielle.
-
-## Decouverte experimentale
-Augmenter ARR seul (CCR1 fixe) diminue la luminosite percue -> confirme concretement
-que le rapport cyclique est CCR/(ARR+1), pas une valeur absolue. Confirme aussi que
-Wokwi modelise correctement le comportement des timers materiels (contrairement a une
-boucle logicielle CPU).
+Remplacer la lecture par polling (phase 2) par une interruption EXTI, avec un
+controle explicite du front declencheur et un anti-rebond logiciel.
 
 ## Configuration
-- PWM 1 kHz (PSC=47, ARR=999) sur TIM3_CH1 (PA6)
-- CCR1 pilote par TIM3_IRQHandler, +-1 tous les 5 update events
+- EXTI13 -> port C (EXTI->EXTICR[3], pas de SYSCFG sur cette famille)
+- Front descendant uniquement (EXTI->FTSR1)
+- Anti-rebond par horodatage (HAL_GetTick), fenetre de 200ms
+- Handler dans Core/Src/stm32c0xx_it.c (deja genere par CubeMX pour ce pin,
+  pas dans main.c)
+
+## Structure
+- `Core/Src/main.c` : configuration EXTI (USER CODE BEGIN 2)
+- `Core/Src/stm32c0xx_it.c` : logique metier dans EXTI4_15_IRQHandler
+  (USER CODE BEGIN EXTI4_15_IRQn 1)
 
 ## Test
-LED externe en fondu progressif continu (~10s par cycle complet)
+Un appui = un seul basculement LED, stable.
+
+## Difficultes rencontrees
+- Handler duplique (une fois genere par CubeMX dans stm32c0xx_it.c, une fois
+  ajoute a tort dans main.c) -> erreur de link "multiple definition"
+- Rebond observe meme en simulation malgre l'hypothese initiale contraire
+  (bouton simule suppose sans rebond mecanique) -> anti-rebond necessaire
+
+## Solution
+- Handler laisse dans stm32c0xx_it.c uniquement, retire de main.c
+- Anti-rebond logiciel par horodatage (HAL_GetTick, fenetre 200ms)
 
 ## Notions apprises
-- Rapport cyclique = ratio, pas valeur absolue (confirme par observation directe)
-- Pilotage d'un registre CCR depuis une interruption plutot que la boucle principale
-- Les timers materiels sont fiables en simulation Wokwi, a la difference des delais
-  logiciels bases sur le comptage de cycles CPU
+- ISR, NVIC, IMR, RTSR/FTSR, flag pending
+- CubeMX genere les handlers dans stm32c0xx_it.c pour les broches qu'il connait
+  (bouton, LED) — verifier ce fichier avant d'ecrire un handler dans main.c
+- Meme un bouton simule peut necessiter un anti-rebond
+- Anti-rebond simple par horodatage (HAL_GetTick), sans timer dedie
