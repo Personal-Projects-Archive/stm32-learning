@@ -18,13 +18,16 @@ int main(void)
   __HAL_RCC_TIM3_CLK_ENABLE();
   TIM3->PSC = 47;
   TIM3->ARR = 999;
-  TIM3->CCR1 = 500;                                  /* 50% */
-  TIM3->CCMR1 |= TIM_CCMR1_OC1M_2 | TIM_CCMR1_OC1M_1; /* PWM mode 1 (110) */
-  TIM3->CCMR1 |= TIM_CCMR1_OC1PE;                     /* preload sur CCR1 */
+  TIM3->CCR1 = 0;                                     /* depart eteint */
+  TIM3->CCMR1 |= TIM_CCMR1_OC1M_2 | TIM_CCMR1_OC1M_1;  /* PWM mode 1 */
+  TIM3->CCMR1 |= TIM_CCMR1_OC1PE;
   TIM3->CR1   |= TIM_CR1_ARPE;
-  TIM3->CCER  |= TIM_CCER_CC1E;                       /* sortie activee */
-  TIM3->EGR   |= TIM_EGR_UG;                          /* charge PSC/ARR/CCR immediatement */
+  TIM3->CCER  |= TIM_CCER_CC1E;
+  TIM3->DIER  |= TIM_DIER_UIE;                         /* interruption d'update pour piloter le fondu */
+  TIM3->EGR   |= TIM_EGR_UG;
+  TIM3->SR    &= ~TIM_SR_UIF;
   TIM3->CR1   |= TIM_CR1_CEN;
+  NVIC_EnableIRQ(TIM3_IRQn);
 
   while (1)
   {
@@ -69,3 +72,25 @@ void Error_Handler(void)
   __disable_irq();
   while (1) {}
 }
+
+/* USER CODE BEGIN 4 */
+void TIM3_IRQHandler(void)
+{
+  static int16_t step = 1;
+  static uint16_t divider = 0;
+
+  if (TIM3->SR & TIM_SR_UIF)
+  {
+    TIM3->SR &= ~TIM_SR_UIF;
+
+    divider++;
+    if (divider >= 5)          /* 1 pas tous les 5 update events (5 ms a 1 kHz) */
+    {
+      divider = 0;
+      TIM3->CCR1 += step;
+      if (TIM3->CCR1 >= TIM3->ARR) { step = -1; }
+      if (TIM3->CCR1 == 0)         { step = 1;  }
+    }
+  }
+}
+/* USER CODE END 4 */
