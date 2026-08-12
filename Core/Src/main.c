@@ -9,17 +9,22 @@ int main(void)
   SystemClock_Config();
   MX_GPIO_Init();
 
-  GPIOA->MODER &= ~GPIO_MODER_MODE5;
-  GPIOA->MODER |= GPIO_MODER_MODE5_0;
+  /* PA6 en Alternate Function, AF1 = TIM3_CH1 */
+  GPIOA->MODER &= ~GPIO_MODER_MODE6;
+  GPIOA->MODER |= GPIO_MODER_MODE6_1;
+  GPIOA->AFR[0] &= ~GPIO_AFRL_AFSEL6;
+  GPIOA->AFR[0] |= (1 << GPIO_AFRL_AFSEL6_Pos);
 
   __HAL_RCC_TIM3_CLK_ENABLE();
-  TIM3->PSC = 47999;              /* 48 MHz / 48000 = 1 kHz */
-  TIM3->ARR = 999;                /* 1 kHz / 1000 = 1 Hz */
-  TIM3->EGR |= TIM_EGR_UG;        /* precharge PSC/ARR immediatement */
-  TIM3->SR &= ~TIM_SR_UIF;        /* efface le flag que l'update forcee vient de mettre */
-  TIM3->DIER |= TIM_DIER_UIE;     /* autorise l'interruption d'update */
-  TIM3->CR1 |= TIM_CR1_CEN;       /* demarre le compteur */
-  NVIC_EnableIRQ(TIM3_IRQn);      /* autorise cote coeur (NVIC) */
+  TIM3->PSC = 47;
+  TIM3->ARR = 999;
+  TIM3->CCR1 = 500;                                  /* 50% */
+  TIM3->CCMR1 |= TIM_CCMR1_OC1M_2 | TIM_CCMR1_OC1M_1; /* PWM mode 1 (110) */
+  TIM3->CCMR1 |= TIM_CCMR1_OC1PE;                     /* preload sur CCR1 */
+  TIM3->CR1   |= TIM_CR1_ARPE;
+  TIM3->CCER  |= TIM_CCER_CC1E;                       /* sortie activee */
+  TIM3->EGR   |= TIM_EGR_UG;                          /* charge PSC/ARR/CCR immediatement */
+  TIM3->CR1   |= TIM_CR1_CEN;
 
   while (1)
   {
@@ -64,14 +69,3 @@ void Error_Handler(void)
   __disable_irq();
   while (1) {}
 }
-
-/* USER CODE BEGIN 4 */
-void TIM3_IRQHandler(void)
-{
-  if (TIM3->SR & TIM_SR_UIF)
-  {
-    TIM3->SR &= ~TIM_SR_UIF;
-    GPIOA->ODR ^= GPIO_ODR_OD5;
-  }
-}
-/* USER CODE END 4 */

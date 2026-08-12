@@ -1,24 +1,24 @@
-# 04 — Timers : TIM3 periodique + interruption
+# 04 partie 2 — Timers : PWM sur TIM3_CH1
 
 ## Objectif
-Configurer TIM3 en mode periodique (PSC/ARR) et declencher une interruption
-d'update pour piloter la LED, plutot qu'une boucle logicielle.
+Generer un signal PWM materiel (sortie geree par le timer, pas par le CPU) sur PA6.
 
 ## Configuration
-- TIM3, horloge APB1 (48 MHz)
-- PSC = 47999, ARR = 999 -> update event a 1 Hz
-- NVIC_EnableIRQ(TIM3_IRQn)
+- PA6 en Alternate Function 1 (TIM3_CH1)
+- PSC = 47, ARR = 999 -> PWM 1 kHz
+- CCR1 = 500 -> rapport cyclique 50%
+- CCMR1 OC1M = PWM mode 1, CCER CC1E active
 
 ## Structure
-- `Core/Src/main.c` : init timer (USER CODE BEGIN 2), handler d'interruption
-  TIM3_IRQHandler (USER CODE BEGIN 4)
+- `Core/Src/main.c` : config GPIO AF + TIM3 PWM (USER CODE BEGIN 2)
+- `diagram.json` : LED externe sur PA6/GND
 
 ## Test
-Clignotement LD4 a ~1 Hz, ou verification par debugger (breakpoint dans le handler,
-watch sur TIM3->CNT) si le rendu visuel n'est pas fiable en simulation.
+LED externe a luminosite reduite et stable (pas de clignotement visible a 1 kHz).
+Verification alternative par debugger : TIM3->CNT progresse, TIM3->CCR1 = 500.
 
 ## Notions apprises
-- PSC / ARR / update event / UIF
-- Double activation necessaire : DIER (peripherique) + NVIC (coeur)
-- EGR/UG pour precharger les registres a l'init
-- Le timer materiel semble mieux respecter le timing simule qu'une boucle logicielle
+- Output Compare / PWM mode 1, CCMRx, CCER, preload (OC1PE/ARPE)
+- Rapport cyclique = CCR/(ARR+1), independant de la frequence (ARR/PSC)
+- Le timer pilote la broche directement en materiel, sans intervention CPU en continu
+- Configuration GPIO en mode Alternate Function (MODER=10 + AFR)

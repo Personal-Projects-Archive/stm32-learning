@@ -3,8 +3,12 @@
   "author": "Yassine",
   "editor": "wokwi",
   "parts": [
-    { "type": "board-st-nucleo-c031c6", "id": "nucleo", "top": 0, "left": 0, "attrs": {} }
+    { "type": "board-st-nucleo-c031c6", "id": "nucleo", "top": 0, "left": 0, "attrs": {} },
+    { "type": "wokwi-led", "id": "led1", "top": 322.8, "left": 90.2, "attrs": { "color": "red" } }
   ],
-  "connections": [],
+  "connections": [
+    [ "led1:A", "nucleo:PA6", "green", [ "v9.6", "h163.2", "v-192.83" ] ],
+    [ "led1:C", "nucleo:GND.4", "black", [ "v9.6", "h-124.4", "v-154.43" ] ]
+  ],
   "dependencies": {}
 }
