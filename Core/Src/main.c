@@ -5,35 +5,62 @@ static void MX_GPIO_Init(void);
 
 int main(void)
 {
-  HAL_Init();              // init HAL, Flash, SysTick (utilise par HAL_GetTick)
-  SystemClock_Config();    // configure l'horloge (HSI, voir phase 3)
-  MX_GPIO_Init();          // active les horloges des ports GPIOA et GPIOC
+  HAL_Init();
+  SystemClock_Config();
+  MX_GPIO_Init();
 
-  // PA5 (LD4, LED embarquee) en sortie push-pull
-  GPIOA->MODER &= ~GPIO_MODER_MODE5;
-  GPIOA->MODER |= GPIO_MODER_MODE5_0;
+  // PA0 en entree analogique (potentiometre)
+  GPIOA->MODER |= GPIO_MODER_MODE0;   // force les 2 bits a 1 = analogique
 
-  // PC13 (bouton externe) en entree, pull-up interne active
-  GPIOC->MODER &= ~GPIO_MODER_MODE13;
-  GPIOC->PUPDR &= ~GPIO_PUPDR_PUPD13;
-  GPIOC->PUPDR |= GPIO_PUPDR_PUPD13_0;
+  // PA6 en Alternate Function 1 = TIM3_CH1 (LED, sortie PWM)
+  GPIOA->MODER &= ~GPIO_MODER_MODE6;
+  GPIOA->MODER |= GPIO_MODER_MODE6_1;
+  GPIOA->AFR[0] &= ~GPIO_AFRL_AFSEL6;
+  GPIOA->AFR[0] |= (1 << GPIO_AFRL_AFSEL6_Pos);
 
-  // Route la ligne EXTI13 sur le port C (pas de SYSCFG sur cette famille)
-  EXTI->EXTICR[3] &= ~(0xFFUL << 8);
-  EXTI->EXTICR[3] |= (2UL << 8);     // 2 = port C
+  // TIM3 en PWM, ARR = 4095 pour matcher directement la resolution 12 bits
+  // de l'ADC (pas de mise a l'echelle necessaire entre les deux)
+  __HAL_RCC_TIM3_CLK_ENABLE();
+  TIM3->PSC = 0;
+  TIM3->ARR = 4095;
+  TIM3->CCR1 = 0;
+  TIM3->CCMR1 |= TIM_CCMR1_OC1M_2 | TIM_CCMR1_OC1M_1;
+  TIM3->CCMR1 |= TIM_CCMR1_OC1PE;
+  TIM3->CR1   |= TIM_CR1_ARPE;
+  TIM3->CCER  |= TIM_CCER_CC1E;
+  TIM3->EGR   |= TIM_EGR_UG;
+  TIM3->CR1   |= TIM_CR1_CEN;
 
-  EXTI->FTSR1 |= (1UL << 13);        // declenche sur front descendant uniquement
-  EXTI->IMR1  |= (1UL << 13);        // demasque la ligne 13 cote peripherique
-  NVIC_EnableIRQ(EXTI4_15_IRQn);     // autorise la ligne cote coeur (NVIC)
+  // Horloge de l'ADC
+  RCC->APBENR2 |= RCC_APBENR2_ADCEN;
 
-  // Rien a faire ici : toute la logique se passe dans l'interruption
-  // (voir Core/Src/stm32c0xx_it.c, fonction EXTI4_15_IRQHandler)
+  // Regulateur interne de l'ADC, obligatoire avant calibration sur cette famille
+  ADC1->CR |= ADC_CR_ADVREGEN;
+  for (volatile uint32_t i = 0; i < 240; i++) { __NOP(); }   // t_ADCVREG_STUP
+
+  // Calibration
+  ADC1->CR |= ADC_CR_ADCAL;
+  while (ADC1->CR & ADC_CR_ADCAL) { }
+
+  // Activation de l'ADC
+  ADC1->CR |= ADC_CR_ADEN;
+  while (!(ADC1->ISR & ADC_ISR_ADRDY)) { }
+
+  // Canal 0 = PA0, temps d'echantillonnage maximal
+  ADC1->CHSELR |= ADC_CHSELR_CHSEL0;
+  ADC1->SMPR = 0x7;
+
   while (1)
   {
+    // Lance une conversion et attend la fin (EOC = End Of Conversion)
+    ADC1->CR |= ADC_CR_ADSTART;
+    while (!(ADC1->ISR & ADC_ISR_EOC)) { }
+
+    // Recopie directe : la valeur brute ADC devient le rapport cyclique PWM
+    TIM3->CCR1 = ADC1->DR;
   }
 }
 
-// Configure l'horloge systeme sur HSI (voir phase 3 pour le detail)
 void SystemClock_Config(void)
 {
   RCC_OscInitTypeDef RCC_OscInitStruct = {0};
@@ -43,7 +70,7 @@ void SystemClock_Config(void)
 
   RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI;
   RCC_OscInitStruct.HSIState = RCC_HSI_ON;
-  RCC_OscInitStruct.HSIDiv = RCC_HSI_DIV1;              // 48 MHz
+  RCC_OscInitStruct.HSIDiv = RCC_HSI_DIV1;
   RCC_OscInitStruct.HSICalibrationValue = RCC_HSICALIBRATION_DEFAULT;
   if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
   {
@@ -62,14 +89,11 @@ void SystemClock_Config(void)
   }
 }
 
-// Active les horloges des ports GPIO utilises (LED sur A, bouton sur C)
 static void MX_GPIO_Init(void)
 {
   __HAL_RCC_GPIOA_CLK_ENABLE();
-  __HAL_RCC_GPIOC_CLK_ENABLE();
 }
 
-// Boucle d'erreur : coupe les interruptions et bloque le programme
 void Error_Handler(void)
 {
   __disable_irq();

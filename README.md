@@ -1,37 +1,25 @@
-# 05 — Interruptions : EXTI13 sur bouton PC13
+# 06 — ADC : lecture potentiometre -> PWM
 
 ## Objectif
-Remplacer la lecture par polling (phase 2) par une interruption EXTI, avec un
-controle explicite du front declencheur et un anti-rebond logiciel.
+Lire une tension analogique sur PA0 et l'utiliser directement pour piloter le
+rapport cyclique d'un PWM (TIM3_CH1, PA6), sans mise a l'echelle.
 
 ## Configuration
-- EXTI13 -> port C (EXTI->EXTICR[3], pas de SYSCFG sur cette famille)
-- Front descendant uniquement (EXTI->FTSR1)
-- Anti-rebond par horodatage (HAL_GetTick), fenetre de 200ms
-- Handler dans Core/Src/stm32c0xx_it.c (deja genere par CubeMX pour ce pin,
-  pas dans main.c)
+- PA0 en mode analogique, ADC1 canal 0
+- Calibration + regulateur interne (ADVREGEN) avant activation
+- TIM3 : ARR = 4095 (matche la resolution 12 bits de l'ADC)
+- CCR1 = valeur brute ADC a chaque conversion
 
 ## Structure
-- `Core/Src/main.c` : configuration EXTI (USER CODE BEGIN 2)
-- `Core/Src/stm32c0xx_it.c` : logique metier dans EXTI4_15_IRQHandler
-  (USER CODE BEGIN EXTI4_15_IRQn 1)
+- `Core/Src/main.c` : init ADC + PWM (USER CODE BEGIN 2), boucle de conversion continue
+- `diagram.json` : potentiometre sur PA0, LED sur PA6
 
 ## Test
-Un appui = un seul basculement LED, stable.
-
-## Difficultes rencontrees
-- Handler duplique (une fois genere par CubeMX dans stm32c0xx_it.c, une fois
-  ajoute a tort dans main.c) -> erreur de link "multiple definition"
-- Rebond observe meme en simulation malgre l'hypothese initiale contraire
-  (bouton simule suppose sans rebond mecanique) -> anti-rebond necessaire
-
-## Solution
-- Handler laisse dans stm32c0xx_it.c uniquement, retire de main.c
-- Anti-rebond logiciel par horodatage (HAL_GetTick, fenetre 200ms)
+Tourner le potentiometre fait varier la luminosite de la LED en direct.
 
 ## Notions apprises
-- ISR, NVIC, IMR, RTSR/FTSR, flag pending
-- CubeMX genere les handlers dans stm32c0xx_it.c pour les broches qu'il connait
-  (bouton, LED) — verifier ce fichier avant d'ecrire un handler dans main.c
-- Meme un bouton simule peut necessiter un anti-rebond
-- Anti-rebond simple par horodatage (HAL_GetTick), sans timer dedie
+- Resolution, canal, temps d'echantillonnage, calibration
+- Sequence specifique a cette famille : ADVREGEN avant ADCAL
+- RCC->APBENR2 pour l'horloge ADC (bus different de GPIO/TIM3)
+- Combiner deux peripheriques (ADC + PWM) sans passer par le CPU pour le calcul,
+  juste une recopie de registre a registre
