@@ -1,25 +1,32 @@
-# 06 — ADC : lecture potentiometre -> PWM
+# 07 — PWM avance : TIM1, sorties complementaires + temps mort
 
 ## Objectif
-Lire une tension analogique sur PA0 et l'utiliser directement pour piloter le
-rapport cyclique d'un PWM (TIM3_CH1, PA6), sans mise a l'echelle.
+Configurer TIM1 (timer avance, seul a avoir des sorties complementaires sur cette
+puce) avec CH1/CH1N et un temps mort de securite, base commune au controle moteur.
 
 ## Configuration
-- PA0 en mode analogique, ADC1 canal 0
-- Calibration + regulateur interne (ADVREGEN) avant activation
-- TIM3 : ARR = 4095 (matche la resolution 12 bits de l'ADC)
-- CCR1 = valeur brute ADC a chaque conversion
+- PA8 = TIM1_CH1 (AF2), PA7 = TIM1_CH1N (AF2)
+- PSC = 47, ARR = 999 -> PWM 1 kHz, CCR1 = 500 (50%)
+- CCER : CC1E + CC1NE (les deux sorties actives)
+- BDTR : DTG = 100 (temps mort), MOE (active physiquement les sorties)
 
 ## Structure
-- `Core/Src/main.c` : init ADC + PWM (USER CODE BEGIN 2), boucle de conversion continue
-- `diagram.json` : potentiometre sur PA0, LED sur PA6
+- `Core/Src/main.c` : config GPIO AF + TIM1 (USER CODE BEGIN 2)
+- `diagram.json` : deux LED, une par sortie (CH1 et CH1N)
 
 ## Test
-Tourner le potentiometre fait varier la luminosite de la LED en direct.
+Deux LED a intensite stable, verification rigoureuse du mecanisme temps mort
+par debugger (TIM1->BDTR, TIM1->CCER) plutot que par l'oeil (duree trop courte
+pour etre visible).
 
 ## Notions apprises
-- Resolution, canal, temps d'echantillonnage, calibration
-- Sequence specifique a cette famille : ADVREGEN avant ADCAL
-- RCC->APBENR2 pour l'horloge ADC (bus different de GPIO/TIM3)
-- Combiner deux peripheriques (ADC + PWM) sans passer par le CPU pour le calcul,
-  juste une recopie de registre a registre
+- Difference TIM1 (avance, sorties N) vs TIM3 (general, pas de sorties N)
+- BDTR : DTG (temps mort) et MOE (activation/coupure globale, aussi fonction
+  de securite "break")
+- RCC->APBENR2 pour TIM1, mais meme domaine d'horloge (PCLK1) que TIM3
+- AF2 pour TIM1_CH1/CH1N sur cette puce (different de AF1 vu sur d'autres
+  familles type F4)
+
+## Limites / ameliorations possibles
+Pas de veritable moteur ni pont en H simule ici (composant non disponible pour
+cette carte sur Wokwi) — demonstration limitee aux deux LED de sortie.

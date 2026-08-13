@@ -4,22 +4,26 @@
   "editor": "wokwi",
   "parts": [
     { "type": "board-st-nucleo-c031c6", "id": "nucleo", "top": 0, "left": 0, "attrs": {} },
-    { "type": "wokwi-potentiometer", "id": "pot1", "top": 17.9, "left": -115.4, "attrs": {} },
     {
       "type": "wokwi-led",
-      "id": "led1",
-      "top": -70.8,
-      "left": 195.8,
+      "id": "led_ch1",
+      "top": -60,
+      "left": -82.6,
       "attrs": { "color": "red" }
+    },
+    {
+      "type": "wokwi-led",
+      "id": "led_ch1n",
+      "top": -60,
+      "left": 260,
+      "attrs": { "color": "blue" }
     }
   ],
   "connections": [
-    [ "pot1:SIG", "nucleo:PA0", "green", [ "v28.8", "h-0.4", "v162.37" ] ],
-    [ "pot1:VCC", "nucleo:3V3", "red", [] ],
-    [ "pot1:GND", "nucleo:GND.4", "black", [ "v134.4", "h57.6", "v-0.83" ] ],
-    [ "led1:A", "nucleo:PA6", "green", [ "v9.6", "h67.2", "v200.77" ] ],
-    [ "led1:C", "nucleo:GND.4", "black", [ "v9.6", "h-239.6", "v239.17" ] ],
-    [ "nucleo:5V.2", "pot1:VCC", "red", [ "h0" ] ]
+    [ "led_ch1:A", "nucleo:PA8", "green", [ "v374.4", "h336", "v-135.23" ] ],
+    [ "led_ch1:C", "nucleo:GND.4", "black", [ "v8.4", "h29.2", "v229.57" ] ],
+    [ "led_ch1n:A", "nucleo:PA7", "green", [ "h3", "v209.17" ] ],
+    [ "led_ch1n:C", "nucleo:GND.4", "black", [ "v8.4", "h-313.4", "v229.57" ] ]
   ],
   "dependencies": {}
 }

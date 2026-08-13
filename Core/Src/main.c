@@ -5,62 +5,53 @@ static void MX_GPIO_Init(void);
 
 int main(void)
 {
-  HAL_Init();
-  SystemClock_Config();
-  MX_GPIO_Init();
+  HAL_Init();              // init HAL, Flash, SysTick
+  SystemClock_Config();    // horloge HSI 48 MHz
+  MX_GPIO_Init();          // active l'horloge du port GPIOA
 
-  // PA0 en entree analogique (potentiometre)
-  GPIOA->MODER |= GPIO_MODER_MODE0;   // force les 2 bits a 1 = analogique
+  // PA8 = TIM1_CH1 (AF2) : sortie principale
+  GPIOA->MODER &= ~GPIO_MODER_MODE8;
+  GPIOA->MODER |= GPIO_MODER_MODE8_1;      // mode alternate function
+  GPIOA->AFR[1] &= ~GPIO_AFRH_AFSEL8;
+  GPIOA->AFR[1] |= (2 << GPIO_AFRH_AFSEL8_Pos);  // AF2 = TIM1_CH1
 
-  // PA6 en Alternate Function 1 = TIM3_CH1 (LED, sortie PWM)
-  GPIOA->MODER &= ~GPIO_MODER_MODE6;
-  GPIOA->MODER |= GPIO_MODER_MODE6_1;
-  GPIOA->AFR[0] &= ~GPIO_AFRL_AFSEL6;
-  GPIOA->AFR[0] |= (1 << GPIO_AFRL_AFSEL6_Pos);
+  // PA7 = TIM1_CH1N (AF2) : sortie complementaire
+  GPIOA->MODER &= ~GPIO_MODER_MODE7;
+  GPIOA->MODER |= GPIO_MODER_MODE7_1;
+  GPIOA->AFR[0] &= ~GPIO_AFRL_AFSEL7;
+  GPIOA->AFR[0] |= (2 << GPIO_AFRL_AFSEL7_Pos);  // AF2 = TIM1_CH1N
 
-  // TIM3 en PWM, ARR = 4095 pour matcher directement la resolution 12 bits
-  // de l'ADC (pas de mise a l'echelle necessaire entre les deux)
-  __HAL_RCC_TIM3_CLK_ENABLE();
-  TIM3->PSC = 0;
-  TIM3->ARR = 4095;
-  TIM3->CCR1 = 0;
-  TIM3->CCMR1 |= TIM_CCMR1_OC1M_2 | TIM_CCMR1_OC1M_1;
-  TIM3->CCMR1 |= TIM_CCMR1_OC1PE;
-  TIM3->CR1   |= TIM_CR1_ARPE;
-  TIM3->CCER  |= TIM_CCER_CC1E;
-  TIM3->EGR   |= TIM_EGR_UG;
-  TIM3->CR1   |= TIM_CR1_CEN;
+  // Horloge de TIM1 (registre different de TIM3, meme domaine PCLK1)
+  RCC->APBENR2 |= RCC_APBENR2_TIM1EN;
 
-  // Horloge de l'ADC
-  RCC->APBENR2 |= RCC_APBENR2_ADCEN;
+  TIM1->PSC = 47;    // 48 MHz / 48 = 1 MHz
+  TIM1->ARR = 999;   // 1 MHz / 1000 = 1 kHz (frequence du PWM)
+  TIM1->CCR1 = 500;  // 500 / 1000 = 50% de rapport cyclique
 
-  // Regulateur interne de l'ADC, obligatoire avant calibration sur cette famille
-  ADC1->CR |= ADC_CR_ADVREGEN;
-  for (volatile uint32_t i = 0; i < 240; i++) { __NOP(); }   // t_ADCVREG_STUP
+  // Mode PWM 1 sur le canal 1
+  TIM1->CCMR1 |= TIM_CCMR1_OC1M_2 | TIM_CCMR1_OC1M_1;
+  TIM1->CCMR1 |= TIM_CCMR1_OC1PE;   // preload sur CCR1
+  TIM1->CR1   |= TIM_CR1_ARPE;      // preload sur ARR
 
-  // Calibration
-  ADC1->CR |= ADC_CR_ADCAL;
-  while (ADC1->CR & ADC_CR_ADCAL) { }
+  // Active la sortie principale ET la sortie complementaire
+  TIM1->CCER |= TIM_CCER_CC1E | TIM_CCER_CC1NE;
 
-  // Activation de l'ADC
-  ADC1->CR |= ADC_CR_ADEN;
-  while (!(ADC1->ISR & ADC_ISR_ADRDY)) { }
+  // Temps mort : delai de securite entre CH1 et CH1N (quelques microsecondes)
+  TIM1->BDTR |= (100 << TIM_BDTR_DTG_Pos);
 
-  // Canal 0 = PA0, temps d'echantillonnage maximal
-  ADC1->CHSELR |= ADC_CHSELR_CHSEL0;
-  ADC1->SMPR = 0x7;
+  // MOE : autorise physiquement les sorties du timer avance (obligatoire sur TIM1)
+  TIM1->BDTR |= TIM_BDTR_MOE;
+
+  TIM1->EGR |= TIM_EGR_UG;   // charge PSC/ARR/CCR immediatement
+  TIM1->CR1 |= TIM_CR1_CEN;  // demarre le compteur
 
   while (1)
   {
-    // Lance une conversion et attend la fin (EOC = End Of Conversion)
-    ADC1->CR |= ADC_CR_ADSTART;
-    while (!(ADC1->ISR & ADC_ISR_EOC)) { }
-
-    // Recopie directe : la valeur brute ADC devient le rapport cyclique PWM
-    TIM3->CCR1 = ADC1->DR;
+    // rien a faire ici : le timer pilote les deux sorties tout seul
   }
 }
 
+// Configure l'horloge systeme sur HSI (voir phase 03 pour le detail)
 void SystemClock_Config(void)
 {
   RCC_OscInitTypeDef RCC_OscInitStruct = {0};
@@ -70,7 +61,7 @@ void SystemClock_Config(void)
 
   RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI;
   RCC_OscInitStruct.HSIState = RCC_HSI_ON;
-  RCC_OscInitStruct.HSIDiv = RCC_HSI_DIV1;
+  RCC_OscInitStruct.HSIDiv = RCC_HSI_DIV1;    // 48 MHz
   RCC_OscInitStruct.HSICalibrationValue = RCC_HSICALIBRATION_DEFAULT;
   if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
   {
@@ -89,11 +80,13 @@ void SystemClock_Config(void)
   }
 }
 
+// Active l'horloge du port GPIO utilise (PA7 et PA8 sont tous les deux sur GPIOA)
 static void MX_GPIO_Init(void)
 {
   __HAL_RCC_GPIOA_CLK_ENABLE();
 }
 
+// Boucle d'erreur : coupe les interruptions et bloque le programme
 void Error_Handler(void)
 {
   __disable_irq();
