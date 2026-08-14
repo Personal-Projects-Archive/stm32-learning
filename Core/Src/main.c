@@ -5,53 +5,55 @@ static void MX_GPIO_Init(void);
 
 int main(void)
 {
-  HAL_Init();              // init HAL, Flash, SysTick
-  SystemClock_Config();    // horloge HSI 48 MHz
-  MX_GPIO_Init();          // active l'horloge du port GPIOA
+  HAL_Init();
+  SystemClock_Config();
+  MX_GPIO_Init();
 
-  // PA8 = TIM1_CH1 (AF2) : sortie principale
-  GPIOA->MODER &= ~GPIO_MODER_MODE8;
-  GPIOA->MODER |= GPIO_MODER_MODE8_1;      // mode alternate function
-  GPIOA->AFR[1] &= ~GPIO_AFRH_AFSEL8;
-  GPIOA->AFR[1] |= (2 << GPIO_AFRH_AFSEL8_Pos);  // AF2 = TIM1_CH1
+  // PA5 (LD4) en sortie, pilotee par les commandes recues sur le terminal
+  GPIOA->MODER &= ~GPIO_MODER_MODE5;
+  GPIOA->MODER |= GPIO_MODER_MODE5_0;
 
-  // PA7 = TIM1_CH1N (AF2) : sortie complementaire
-  GPIOA->MODER &= ~GPIO_MODER_MODE7;
-  GPIOA->MODER |= GPIO_MODER_MODE7_1;
-  GPIOA->AFR[0] &= ~GPIO_AFRL_AFSEL7;
-  GPIOA->AFR[0] |= (2 << GPIO_AFRL_AFSEL7_Pos);  // AF2 = TIM1_CH1N
+  // PA2 = USART2_TX (AF1)
+  GPIOA->MODER &= ~GPIO_MODER_MODE2;
+  GPIOA->MODER |= GPIO_MODER_MODE2_1;
+  GPIOA->AFR[0] &= ~GPIO_AFRL_AFSEL2;
+  GPIOA->AFR[0] |= (1 << GPIO_AFRL_AFSEL2_Pos);
 
-  // Horloge de TIM1 (registre different de TIM3, meme domaine PCLK1)
-  RCC->APBENR2 |= RCC_APBENR2_TIM1EN;
+  // PA3 = USART2_RX (AF1)
+  GPIOA->MODER &= ~GPIO_MODER_MODE3;
+  GPIOA->MODER |= GPIO_MODER_MODE3_1;
+  GPIOA->AFR[0] &= ~GPIO_AFRL_AFSEL3;
+  GPIOA->AFR[0] |= (1 << GPIO_AFRL_AFSEL3_Pos);
 
-  TIM1->PSC = 47;    // 48 MHz / 48 = 1 MHz
-  TIM1->ARR = 999;   // 1 MHz / 1000 = 1 kHz (frequence du PWM)
-  TIM1->CCR1 = 500;  // 500 / 1000 = 50% de rapport cyclique
+  // USART2 a 115200 bauds, 8 bits, 1 stop, pas de parite (8N1)
+  RCC->APBENR1 |= RCC_APBENR1_USART2EN;
+  USART2->BRR = 48000000UL / 115200UL;
+  USART2->CR1 |= USART_CR1_TE | USART_CR1_RE;
+  USART2->CR1 |= USART_CR1_UE;
 
-  // Mode PWM 1 sur le canal 1
-  TIM1->CCMR1 |= TIM_CCMR1_OC1M_2 | TIM_CCMR1_OC1M_1;
-  TIM1->CCMR1 |= TIM_CCMR1_OC1PE;   // preload sur CCR1
-  TIM1->CR1   |= TIM_CR1_ARPE;      // preload sur ARR
-
-  // Active la sortie principale ET la sortie complementaire
-  TIM1->CCER |= TIM_CCER_CC1E | TIM_CCER_CC1NE;
-
-  // Temps mort : delai de securite entre CH1 et CH1N (quelques microsecondes)
-  TIM1->BDTR |= (100 << TIM_BDTR_DTG_Pos);
-
-  // MOE : autorise physiquement les sorties du timer avance (obligatoire sur TIM1)
-  TIM1->BDTR |= TIM_BDTR_MOE;
-
-  TIM1->EGR |= TIM_EGR_UG;   // charge PSC/ARR/CCR immediatement
-  TIM1->CR1 |= TIM_CR1_CEN;  // demarre le compteur
+  // Message de bienvenue, envoye caractere par caractere
+  const char msg[] = "Terminal pret. Tape 'o' pour allumer la LED, 'f' pour l'eteindre.\r\n";
+  for (uint32_t i = 0; msg[i] != '\0'; i++)
+  {
+    while (!(USART2->ISR & USART_ISR_TXFE)) { }   // attend que le FIFO TX soit libre
+    USART2->TDR = msg[i];
+  }
 
   while (1)
   {
-    // rien a faire ici : le timer pilote les deux sorties tout seul
+    while (!(USART2->ISR & USART_ISR_RXFF)) { }   // attend un caractere recu
+    char c = (char)USART2->RDR;
+
+    // echo : renvoie le caractere tape, pour le voir apparaitre dans le terminal
+    while (!(USART2->ISR & USART_ISR_TXFE)) { }
+    USART2->TDR = c;
+
+    if (c == 'o') { GPIOA->ODR |= GPIO_ODR_OD5; }
+    if (c == 'f') { GPIOA->ODR &= ~GPIO_ODR_OD5; }
   }
 }
 
-// Configure l'horloge systeme sur HSI (voir phase 03 pour le detail)
+// Configure l'horloge systeme sur HSI (voir phase 11 pour le detail)
 void SystemClock_Config(void)
 {
   RCC_OscInitTypeDef RCC_OscInitStruct = {0};
@@ -61,7 +63,7 @@ void SystemClock_Config(void)
 
   RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI;
   RCC_OscInitStruct.HSIState = RCC_HSI_ON;
-  RCC_OscInitStruct.HSIDiv = RCC_HSI_DIV1;    // 48 MHz
+  RCC_OscInitStruct.HSIDiv = RCC_HSI_DIV1;
   RCC_OscInitStruct.HSICalibrationValue = RCC_HSICALIBRATION_DEFAULT;
   if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
   {
@@ -80,7 +82,7 @@ void SystemClock_Config(void)
   }
 }
 
-// Active l'horloge du port GPIO utilise (PA7 et PA8 sont tous les deux sur GPIOA)
+// Active l'horloge du port GPIO utilise (LED et USART sont tous les deux sur A)
 static void MX_GPIO_Init(void)
 {
   __HAL_RCC_GPIOA_CLK_ENABLE();
