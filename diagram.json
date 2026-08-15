@@ -3,8 +3,30 @@
   "author": "Yassine",
   "editor": "wokwi",
   "parts": [
-    { "type": "board-st-nucleo-c031c6", "id": "nucleo", "top": 0, "left": 0, "attrs": {} }
+    { "type": "board-st-nucleo-c031c6", "id": "nucleo", "top": 20.03, "left": -0.98, "attrs": {} },
+    { "type": "wokwi-74hc595", "id": "sr1", "top": -49.2, "left": 149.44, "attrs": {} },
+    { "type": "wokwi-led", "id": "led0", "top": -160, "left": 130, "attrs": { "color": "red" } },
+    { "type": "wokwi-led", "id": "led1", "top": -160, "left": 160, "attrs": { "color": "red" } },
+    { "type": "wokwi-led", "id": "led2", "top": -160, "left": 190, "attrs": { "color": "red" } },
+    { "type": "wokwi-led", "id": "led3", "top": -160, "left": 220, "attrs": { "color": "red" } }
   ],
-  "connections": [],
+  "connections": [
+    [ "sr1:VCC", "nucleo:3V3", "red", [] ],
+    [ "sr1:GND", "nucleo:GND.4", "black", [ "v28.8", "h-249.6", "v230.4" ] ],
+    [ "sr1:OE", "nucleo:GND.4", "black", [ "v-8.4", "h-211.2", "v277.57" ] ],
+    [ "sr1:MR", "nucleo:3V3", "red", [] ],
+    [ "sr1:DS", "nucleo:PA7", "green", [ "v-18", "h124.8", "v278.4" ] ],
+    [ "sr1:SHCP", "nucleo:PA5", "green", [ "v-8.4", "h76.8", "v249.6" ] ],
+    [ "sr1:STCP", "nucleo:PA4", "green", [ "v-27.6", "h-211.2", "v344.77" ] ],
+    [ "led0:A", "sr1:Q0", "yellow", [] ],
+    [ "led1:A", "sr1:Q1", "yellow", [ "v22", "h-60.2", "v86.4", "h28.8" ] ],
+    [ "led2:A", "sr1:Q2", "yellow", [ "v31.6", "h-80.6", "v86.4", "h28.8" ] ],
+    [ "led3:A", "sr1:Q3", "yellow", [ "v22", "h-14.6", "v86.4", "h-57.6" ] ],
+    [ "led0:C", "nucleo:GND.4", "black", [ "v12.4", "h-173.8", "v325.57" ] ],
+    [ "led1:C", "nucleo:GND.4", "black", [ "v12.4", "h-203.8", "v325.57" ] ],
+    [ "led2:C", "nucleo:GND.4", "black", [ "v12.4", "h-233.8", "v325.57" ] ],
+    [ "led3:C", "nucleo:GND.4", "black", [ "v12.4", "h-263.8", "v325.57" ] ],
+    [ "sr1:VCC", "nucleo:3V3.2", "red", [ "v-18", "h-192", "v268.8" ] ]
+  ],
   "dependencies": {}
 }

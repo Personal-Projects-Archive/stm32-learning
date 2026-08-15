@@ -1,26 +1,23 @@
-# 08 — UART : terminal serie via USART2
+# 09 — SPI : registre a decalage 74HC595
 
 ## Objectif
-Envoyer un message de bienvenue et lire des commandes envoyees depuis le terminal
-serie pour piloter la LED, en polling (sans interruption ni DMA).
+Envoyer un octet via SPI1 vers un 74HC595, verifier le resultat par un motif
+lumineux visible (pas de moniteur serie ni debugger necessaires).
 
 ## Configuration
-- USART2, 115200 bauds, 8N1
-- PA2 = TX (AF1), PA3 = RX (AF1)
-- Relie au port serie virtuel du ST-LINK simule par Wokwi, aucun cablage externe
+- SPI1, maitre, CS logiciel (SSM/SSI), trame 8 bits, ~6 MHz
+- PA5 = SCK, PA7 = MOSI (AF0), PA4 = latch STCP (GPIO classique)
 
 ## Structure
-- `Core/Src/main.c` : init USART2 + boucle de lecture/echo/commande (USER CODE BEGIN 2)
+- `Core/Src/main.c` : config SPI1 (USER CODE BEGIN 2), boucle d'envoi + latch
+- `diagram.json` : 74HC595 + 4 LED sur Q0-Q3
 
 ## Test
-Le terminal serie Wokwi affiche le message de bienvenue. Taper 'o' allume la LED,
-'f' l'eteint, chaque caractere tape est renvoye en echo.
+Une LED allumee a la fois, se deplace de Q0 a Q3 en boucle.
 
 ## Notions apprises
-- BRR, TXE, RXNE, trame 8N1
-- RCC->APBENR1 pour USART2 (registre different d'ADC/TIM1 qui sont sur APBENR2)
-- Port serie virtuel du ST-LINK simule automatiquement par Wokwi (pas de cablage)
-
-## Limites / ameliorations possibles
-Polling bloquant, commandes limitees a un seul caractere — passage a l'interruption
-et parsing de chaines completes a prevoir si besoin plus tard.
+- SPI maitre/esclave, CPOL/CPHA, gestion logicielle du CS (SSM/SSI)
+- Registre CR2.DS : la taille de trame (8 bits) doit etre configuree explicitement,
+  pas de valeur par defaut fiable a supposer
+- RCC->APBENR2 pour SPI1 (meme registre qu'ADC et TIM1)
+- Verification par retour visuel

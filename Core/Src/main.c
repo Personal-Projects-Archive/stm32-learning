@@ -9,51 +9,55 @@ int main(void)
   SystemClock_Config();
   MX_GPIO_Init();
 
-  // PA5 (LD4) en sortie, pilotee par les commandes recues sur le terminal
+  // PA4 en sortie classique : signal de verrouillage (STCP) du 74HC595
+  GPIOA->MODER &= ~GPIO_MODER_MODE4;
+  GPIOA->MODER |= GPIO_MODER_MODE4_0;
+
+  // PA5 = SPI1_SCK (AF0)
   GPIOA->MODER &= ~GPIO_MODER_MODE5;
-  GPIOA->MODER |= GPIO_MODER_MODE5_0;
+  GPIOA->MODER |= GPIO_MODER_MODE5_1;
 
-  // PA2 = USART2_TX (AF1)
-  GPIOA->MODER &= ~GPIO_MODER_MODE2;
-  GPIOA->MODER |= GPIO_MODER_MODE2_1;
-  GPIOA->AFR[0] &= ~GPIO_AFRL_AFSEL2;
-  GPIOA->AFR[0] |= (1 << GPIO_AFRL_AFSEL2_Pos);
+  // PA7 = SPI1_MOSI (AF0)
+  GPIOA->MODER &= ~GPIO_MODER_MODE7;
+  GPIOA->MODER |= GPIO_MODER_MODE7_1;
+  // AF0 = valeur par defaut du registre AFR, rien a ecrire explicitement
 
-  // PA3 = USART2_RX (AF1)
-  GPIOA->MODER &= ~GPIO_MODER_MODE3;
-  GPIOA->MODER |= GPIO_MODER_MODE3_1;
-  GPIOA->AFR[0] &= ~GPIO_AFRL_AFSEL3;
-  GPIOA->AFR[0] |= (1 << GPIO_AFRL_AFSEL3_Pos);
+  // Configuration de SPI1 : maitre, CS logiciel, trame 8 bits
+  RCC->APBENR2 |= RCC_APBENR2_SPI1EN;
 
-  // USART2 a 115200 bauds, 8 bits, 1 stop, pas de parite (8N1)
-  RCC->APBENR1 |= RCC_APBENR1_USART2EN;
-  USART2->BRR = 48000000UL / 115200UL;
-  USART2->CR1 |= USART_CR1_TE | USART_CR1_RE;
-  USART2->CR1 |= USART_CR1_UE;
+  SPI1->CR1 = 0;
+  SPI1->CR1 |= SPI_CR1_MSTR;                // mode maitre
+  SPI1->CR1 |= SPI_CR1_SSM | SPI_CR1_SSI;   // pas de NSS materiel, gere par logiciel
+  SPI1->CR1 |= (2 << SPI_CR1_BR_Pos);       // 48MHz / 8 = 6 MHz
 
-  // Message de bienvenue, envoye caractere par caractere
-  const char msg[] = "Terminal pret. Tape 'o' pour allumer la LED, 'f' pour l'eteindre.\r\n";
-  for (uint32_t i = 0; msg[i] != '\0'; i++)
-  {
-    while (!(USART2->ISR & USART_ISR_TXFE)) { }   // attend que le FIFO TX soit libre
-    USART2->TDR = msg[i];
-  }
+  SPI1->CR2 = 0;
+  SPI1->CR2 |= (7 << SPI_CR2_DS_Pos);       // trame de 8 bits (0111)
+  SPI1->CR2 |= SPI_CR2_FRXTH;               // seuil de reception adapte a 8 bits
+
+  SPI1->CR1 |= SPI_CR1_SPE;                 // active SPI1
+
+  uint8_t pattern = 0x01;
 
   while (1)
   {
-    while (!(USART2->ISR & USART_ISR_RXFF)) { }   // attend un caractere recu
-    char c = (char)USART2->RDR;
+    // envoie un octet
+    while (!(SPI1->SR & SPI_SR_TXE)) { }
+    *(volatile uint8_t *)&SPI1->DR = pattern;
+    while (SPI1->SR & SPI_SR_BSY) { }
 
-    // echo : renvoie le caractere tape, pour le voir apparaitre dans le terminal
-    while (!(USART2->ISR & USART_ISR_TXFE)) { }
-    USART2->TDR = c;
+    // impulsion de verrouillage : fait apparaitre l'octet sur les sorties Q0-Q7
+    GPIOA->ODR |= GPIO_ODR_OD4;
+    GPIOA->ODR &= ~GPIO_ODR_OD4;
 
-    if (c == 'o') { GPIOA->ODR |= GPIO_ODR_OD5; }
-    if (c == 'f') { GPIOA->ODR &= ~GPIO_ODR_OD5; }
+    // fait avancer le bit d'une position (retombe a 0x01 apres Q3)
+    pattern <<= 1;
+    if (pattern > 0x08) { pattern = 0x01; }
+
+    for (volatile uint32_t i = 0; i < 500000; i++) { __NOP(); }
   }
 }
 
-// Configure l'horloge systeme sur HSI (voir phase 11 pour le detail)
+// Configure l'horloge systeme sur HSI (voir phase 03 pour le detail)
 void SystemClock_Config(void)
 {
   RCC_OscInitTypeDef RCC_OscInitStruct = {0};
@@ -82,7 +86,7 @@ void SystemClock_Config(void)
   }
 }
 
-// Active l'horloge du port GPIO utilise (LED et USART sont tous les deux sur A)
+// Active l'horloge du port GPIO utilise
 static void MX_GPIO_Init(void)
 {
   __HAL_RCC_GPIOA_CLK_ENABLE();
