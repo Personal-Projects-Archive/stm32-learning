@@ -1,63 +1,66 @@
-# 10 — I2C : lecture continue MPU6050 + retour LED PWM
+# Phase 11 — DMA
 
-## Objectif
-Lire un capteur I2C (MPU6050) en boucle continue, verifier sa presence via le
-registre WHO_AM_I, puis piloter une LED en PWM proportionnellement a
-l'acceleration lue sur l'axe X, en temps reel.
+## Statut
+Non simulable. Cette formation utilise Wokwi (STM32) comme environnement de
+simulation, et aucune des cartes STM32 actuellement disponibles sur cette
+plateforme ne simule le controleur DMA. Cette phase reste donc theorique
+jusqu'a l'acquisition d'une carte physique.
 
-## Cible
-STM32C031C6 (Nucleo-64), simule sur Wokwi.
+## Objectif de la phase
+Comprendre et mettre en oeuvre le transfert de donnees par DMA (Direct Memory
+Access) : transferts memoire-vers-memoire, peripherique-vers-memoire et
+memoire-vers-peripherique, sans intervention continue du CPU. Notions cles :
+canaux, requetes (DMAMUX sur les familles recentes), mode normal vs
+circulaire, interruptions half-transfer et transfer-complete.
 
-## Configuration
-- I2C1 : PA9 (SCL) / PA10 (SDA) — assignation par defaut de CubeMX pour cette
-  puce (differente de PB6/PB7 vu sur d'autres familles/tutoriels)
-- TIMINGR (vitesse du bus I2C) genere par STM32CubeMX plutot que calcule a la
-  main : formule trop sensible aux erreurs pour la deriver soi-meme de maniere
-  fiable ; MX_I2C1_Init() est garde tel que genere, sans modification
-- TIM3_CH1 (PA6) en PWM, rapport cyclique pilote directement par la valeur
-  ACCEL_XOUT lue sur le capteur
-- Aucune pause artificielle dans la boucle de lecture : la transaction I2C
-  elle-meme cadence le rythme, pour un retour quasi instantane
+## Carte physique recommandee pour completer cette partie de la formation
 
-## Structure
-- `Core/Src/main.c` : MX_I2C1_Init() genere par CubeMX (non modifie) + toute
-  la logique applicative (lecture WHO_AM_I, lecture continue ACCEL_XOUT,
-  pilotage PWM) ecrite a la main, en acces registre direct
-- `diagram.json` : carte + MPU6050 (SCL/SDA sur PA9/PA10) + LED externe sur PA6
+**Nucleo-H563ZI**
 
-## Test
-- LD4 (LED embarquee) allumee fixe : confirme que WHO_AM_I a repondu 0x68
-- LED externe (PA6) : luminosite qui suit le curseur "Acceleration X" du
-  panneau du capteur, en quasi temps reel
+Cette carte a ete choisie pour couvrir en une seule acquisition l'ensemble
+des phases non simulables restantes de cette formation (DMA, CAN, USB,
+Ethernet), plutot que d'acheter une carte differente pour chacune :
 
-## Difficultes rencontrees et solutions
-Cette phase a demande plusieurs allers-retours de diagnostic, sans acces
-fiable a un debugger ni au moniteur serie dans cet environnement :
+- Microcontroleur STM32H563ZI, coeur Arm Cortex-M33 a 250 MHz, avec
+  TrustZone (interet pour la securite embarquee : boot securise,
+  accelerateurs cryptographiques, isolation memoire)
+- 2 Mo de Flash, 640 Ko de RAM
+- Jusqu'a 2x FDCAN (CAN FD)
+- USB Full-Speed et USB Type-C / Power Delivery
+- Interface Ethernet
+- DMA multi-canaux avec DMAMUX
+- Connecteurs Arduino, ST Zio et ST Morpho (compatibilite shields standards)
+- Format Nucleo-144, meme famille d'outils (STM32CubeMX, STM32CubeIDE for
+  VS Code) que la carte utilisee jusqu'ici dans cette formation
 
-1. **Ecriture de reveil du capteur bloquante** — le code initial reveillait
-   le MPU6050 (sortie du mode veille, registre PWR_MGMT_1) avant la lecture,
-   comme sur un capteur physique reel. Cette ecriture bloquait indefiniment
-   en simulation. Cause probable : Wokwi ne modelise pas l'etat de veille
-   interne du capteur simule.
+## Configuration a prevoir dans STM32CubeMX (a faire une fois la carte en main)
 
-2. **Diagnostic sans outil** — face a un blocage silencieux, mise en place
-   d'un systeme de clignotements codes (un nombre de clignotements distinct
-   a chaque etape du programme) pour localiser precisement le point de
-   blocage sans debugger ni terminal. Methode reutilisable pour toute phase
-   future si le meme probleme se represente.
+Etapes generales, a detailler au moment de l'implementation reelle :
 
-3. **Retour visuel trop lent** — une pause de securite (3 millions de cycles)
-   en fin de boucle rendait le retour non "temps reel" percu. Retiree : rien
-   ne l'imposait, la transaction I2C suffit a cadencer naturellement.
+1. Nouveau projet CubeMX cible sur STM32H563ZI (ou import du board Nucleo-H563ZI)
+2. Categorie **System Core > DMA** : ajouter une requete DMA associee au
+   peripherique concerne (ADC, UART, SPI...), choisir le mode (Normal ou
+   Circular selon le besoin)
+3. Activer les interruptions DMA souhaitees (Transfer Complete, Half
+   Transfer) dans l'onglet NVIC du peripherique DMA
+4. Activer le mode DMA correspondant cote peripherique source/destination
+   (ex. "DMA Continuous Requests" pour un ADC en acquisition continue)
+5. Generer le code, puis ecrire la logique applicative dans les zones
+   USER CODE, sans modifier le code d'initialisation genere
 
-## Notions apprises
-- Motif ecriture-puis-lecture (re-START) en I2C : CR2 (adresse, NBYTES,
-  START, AUTOEND, RD_WRN), TXDR/RXDR, flags TXIS/RXNE/TC/STOPF
-- Timeout systematique sur toute attente de flag bloquante, pour eviter un
-  gel silencieux permanent
-- Diagnostic par signal visuel code (nombre/vitesse de clignotements) comme
-  methode de secours en l'absence de debugger fiable
-- Isoler une variable a la fois (test minimal, ajout progressif) plutot que
-  de modifier un gros bloc de code d'un coup face a un bug
-- Ne pas supposer qu'un capteur simule reproduit tout le comportement d'un
-  capteur physique (etat de veille, alimentation)
+## Notions a retenir en attendant la mise en oeuvre reelle
+
+- Le DMA remplace l'attente bloquante du CPU (`while (!flag) {}`) par un
+  transfert autonome : le CPU configure une fois, puis est libre
+- Le mode circulaire permet un flux continu sans jamais redemarrer le
+  transfert manuellement
+- Les interruptions half-transfer / transfer-complete permettent un motif
+  de double-buffering (traiter une moitie du buffer pendant que l'autre
+  se remplit)
+- Sur les familles recentes (dont H5), le routage requete-vers-canal passe
+  par un DMAMUX configurable, plutot qu'un mapping fixe
+
+## Prochaines etapes
+Les phases 12 (Watchdogs), 13 (CAN), 14 (Ethernet) et 15 (USB) suivront le meme format —
+README documentant l'objectif et les etapes de configuration, sans code ni
+simulation, jusqu'a la mise en oeuvre sur la Nucleo-H563ZI mentionnee ci-dessus.
