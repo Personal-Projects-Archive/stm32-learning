@@ -1,66 +1,63 @@
-# Phase 11 — DMA
+# Phase 12 — Watchdogs (IWDG / WWDG)
 
 ## Statut
-Non simulable. Cette formation utilise Wokwi (STM32) comme environnement de
-simulation, et aucune des cartes STM32 actuellement disponibles sur cette
-plateforme ne simule le controleur DMA. Cette phase reste donc theorique
-jusqu'a l'acquisition d'une carte physique.
+Non simulable. Le tableau de fonctionnalites officiel de Wokwi pour cette
+carte indique IWDG et WWDG comme non implementes. Cette phase reste
+theorique jusqu'a l'acquisition d'une carte physique (voir phase 11 pour
+la recommandation materielle : Nucleo-H563ZI).
 
 ## Objectif de la phase
-Comprendre et mettre en oeuvre le transfert de donnees par DMA (Direct Memory
-Access) : transferts memoire-vers-memoire, peripherique-vers-memoire et
-memoire-vers-peripherique, sans intervention continue du CPU. Notions cles :
-canaux, requetes (DMAMUX sur les familles recentes), mode normal vs
-circulaire, interruptions half-transfer et transfer-complete.
+Comprendre et mettre en oeuvre les deux mecanismes de surveillance logicielle
+disponibles sur STM32 : le watchdog independant (IWDG) et le watchdog a
+fenetre (WWDG). Les deux servent a detecter un blocage logiciel et a
+provoquer une reinitialisation automatique du systeme si le programme
+principal cesse de repondre.
 
-## Carte physique recommandee pour completer cette partie de la formation
+## IWDG (Independent Watchdog)
+- Cadence sur un oscillateur independant du reste du systeme (LSI, quelques
+  dizaines de kHz), ce qui le rend actif meme si l'horloge principale
+  tombe en panne
+- Compteur descendant : demarre a une valeur de reload, decremente en
+  continu ; s'il atteint zero, reinitialisation immediate du systeme
+- Rafraichissement ("petting the dog") : le programme doit ecrire
+  regulierement une valeur cle dans un registre pour recharger le compteur
+  avant qu'il n'atteigne zero
+- Usage typique : filet de securite generique, insensible aux problemes
+  d'horloge principale
 
-**Nucleo-H563ZI**
-
-Cette carte a ete choisie pour couvrir en une seule acquisition l'ensemble
-des phases non simulables restantes de cette formation (DMA, CAN, USB,
-Ethernet), plutot que d'acheter une carte differente pour chacune :
-
-- Microcontroleur STM32H563ZI, coeur Arm Cortex-M33 a 250 MHz, avec
-  TrustZone (interet pour la securite embarquee : boot securise,
-  accelerateurs cryptographiques, isolation memoire)
-- 2 Mo de Flash, 640 Ko de RAM
-- Jusqu'a 2x FDCAN (CAN FD)
-- USB Full-Speed et USB Type-C / Power Delivery
-- Interface Ethernet
-- DMA multi-canaux avec DMAMUX
-- Connecteurs Arduino, ST Zio et ST Morpho (compatibilite shields standards)
-- Format Nucleo-144, meme famille d'outils (STM32CubeMX, STM32CubeIDE for
-  VS Code) que la carte utilisee jusqu'ici dans cette formation
+## WWDG (Window Watchdog)
+- Cadence sur l'horloge principale du systeme (contrairement a l'IWDG)
+- Ajoute une notion de fenetre : le rafraichissement doit intervenir ni
+  trop tot, ni trop tard - une fenetre de temps precise, pas juste une
+  limite haute
+- Rafraichir trop tot est aussi une faute que de rafraichir trop tard :
+  ca detecte des dysfonctionnements plus subtils qu'une simple boucle qui
+  se bloque (ex. une tache qui boucle anormalement vite)
+- Peut declencher une interruption juste avant la reinitialisation (EWI,
+  Early Wakeup Interrupt), utile pour journaliser l'incident avant le reset
 
 ## Configuration a prevoir dans STM32CubeMX (a faire une fois la carte en main)
 
-Etapes generales, a detailler au moment de l'implementation reelle :
-
-1. Nouveau projet CubeMX cible sur STM32H563ZI (ou import du board Nucleo-H563ZI)
-2. Categorie **System Core > DMA** : ajouter une requete DMA associee au
-   peripherique concerne (ADC, UART, SPI...), choisir le mode (Normal ou
-   Circular selon le besoin)
-3. Activer les interruptions DMA souhaitees (Transfer Complete, Half
-   Transfer) dans l'onglet NVIC du peripherique DMA
-4. Activer le mode DMA correspondant cote peripherique source/destination
-   (ex. "DMA Continuous Requests" pour un ADC en acquisition continue)
-5. Generer le code, puis ecrire la logique applicative dans les zones
-   USER CODE, sans modifier le code d'initialisation genere
+1. Categorie **System Core > IWDG** (ou **WWDG**) : Activated
+2. Pour l'IWDG : regler le Prescaler et la valeur de Reload pour obtenir le
+   delai de timeout souhaite (le calcul depend de la frequence LSI reelle,
+   a verifier dans le datasheet de la puce utilisee)
+3. Pour le WWDG : regler le Prescaler, la valeur Window et la valeur Counter
+   pour definir la fenetre de rafraichissement valide
+4. Generer le code, puis appeler la fonction de rafraichissement HAL
+   correspondante (`HAL_IWDG_Refresh()` / `HAL_WWDG_Refresh()`) a un endroit
+   du programme execute regulierement et de maniere fiable
 
 ## Notions a retenir en attendant la mise en oeuvre reelle
+- L'IWDG survit a une panne de l'horloge principale, le WWDG non
+- Le WWDG detecte a la fois "trop tard" ET "trop tot", l'IWDG seulement
+  "trop tard"
+- Ne jamais rafraichir un watchdog depuis une interruption qui continuerait
+  a s'executer meme si la boucle principale est bloquee : ca annulerait
+  l'interet du mecanisme
+- Strategie de projet suggeree (a implementer sur materiel reel) : systeme
+  qui detecte une tache bloquee et recupere automatiquement, avec le
+  watchdog comme filet de securite final
 
-- Le DMA remplace l'attente bloquante du CPU (`while (!flag) {}`) par un
-  transfert autonome : le CPU configure une fois, puis est libre
-- Le mode circulaire permet un flux continu sans jamais redemarrer le
-  transfert manuellement
-- Les interruptions half-transfer / transfer-complete permettent un motif
-  de double-buffering (traiter une moitie du buffer pendant que l'autre
-  se remplit)
-- Sur les familles recentes (dont H5), le routage requete-vers-canal passe
-  par un DMAMUX configurable, plutot qu'un mapping fixe
-
-## Prochaines etapes
-Les phases 12 (Watchdogs), 13 (CAN), 14 (Ethernet) et 15 (USB) suivront le meme format —
-README documentant l'objectif et les etapes de configuration, sans code ni
-simulation, jusqu'a la mise en oeuvre sur la Nucleo-H563ZI mentionnee ci-dessus.
+## Prochaine etape
+Phase 13 (CAN), meme format documentaire prevu.
