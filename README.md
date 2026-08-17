@@ -1,71 +1,69 @@
-# Phase 13 — CAN / CAN FD
+# Phase 14 — Ethernet
 
 ## Statut
-Non simulable. Aucune des cartes STM32 disponibles sur Wokwi ne simule le
-controleur CAN, quelle que soit la carte choisie. Cette phase reste
-theorique jusqu'a l'acquisition d'une carte physique (voir phase 11 pour
-la recommandation materielle : Nucleo-H563ZI, qui integre jusqu'a deux
-controleurs FDCAN).
+Non simulable, et impossible meme en theorie sur la puce utilisee jusqu'ici
+(STM32C031C6) : cette famille d'entree de gamme n'integre pas de controleur
+Ethernet. Cette phase necessite une puce disposant du peripherique MAC
+Ethernet, comme le STM32H563ZI recommande en phase 11.
 
 ## Objectif de la phase
-Comprendre le fonctionnement du bus CAN, mettre en oeuvre une communication
-entre deux noeuds STM32, puis introduire les bases de CANopen (protocole
-applicatif construit au-dessus du CAN, courant en environnement industriel).
+Comprendre la pile reseau depuis la couche materielle jusqu'a la couche
+applicative, et mettre en oeuvre une communication IP (TCP ou UDP) depuis
+un STM32.
 
 ## Notions fondamentales
 
-- **Bus multi-maitre, diffusion** : tous les noeuds sur le bus recoivent
-  chaque trame emise ; il n'y a pas d'adressage point-a-point comme en I2C,
-  chaque trame porte un identifiant (ID) qui indique son contenu/sa priorite,
-  pas son destinataire
-- **Arbitrage** : si plusieurs noeuds emettent en meme temps, celui dont
-  l'identifiant a la priorite la plus haute (valeur numerique la plus basse)
-  gagne l'acces au bus sans collision ni perte de donnees - mecanisme
-  matriel, pas une simple detection de collision comme sur d'anciens
-  reseaux Ethernet
-- **Identifiant standard (11 bits) vs etendu (29 bits)** : deux formats de
-  trame coexistent sur le meme bus
-- **DLC (Data Length Code)** : longueur utile de la trame, jusqu'a 8 octets
-  en CAN classique, jusqu'a 64 en CAN FD
-- **ACK** : chaque noeud recepteur valide la trame recue, meme sans
-  adressage explicite - un mecanisme d'accuse de reception collectif
-- **Bus-off** : etat de protection automatique qu'un noeud atteint apres
-  trop d'erreurs consecutives - il se deconnecte de lui-meme du bus pour
-  eviter de le polluer
-- **Terminaison** : deux resistances de 120 ohms aux extremites physiques
-  du bus, necessaires pour eviter les reflexions de signal - detail
-  materiel a ne pas oublier sur un vrai montage
-- **CAN FD** : extension permettant un debit de donnees plus eleve sur la
-  partie utile de la trame, et jusqu'a 64 octets de charge utile au lieu de 8
+### Couche materielle
+- **MAC (Media Access Control)** : bloc integre au microcontroleur, gere
+  la mise en trame Ethernet et l'acces au support
+- **PHY (Physical layer)** : circuit externe (ou integre selon les cartes)
+  qui convertit les signaux numeriques du MAC en signaux electriques sur le
+  cable, et inversement
+- **RMII / MII** : interfaces standardisees entre le MAC (dans le
+  microcontroleur) et le PHY (souvent un circuit externe) - RMII utilise
+  moins de broches que MII, au prix d'une frequence d'horloge plus elevee
+  sur ces broches
+- **Trame Ethernet** : adresse MAC destination, adresse MAC source,
+  type/longueur, donnees utiles, controle d'erreur (CRC)
+- **Adresse MAC** : identifiant unique 48 bits de l'interface reseau,
+  distinct de l'adresse IP (couche differente)
 
-## CANopen (introduction, a approfondir plus tard)
-- **PDO (Process Data Object)** : donnees temps reel echangees directement,
-  sans confirmation explicite - pense capteurs/actionneurs
-- **SDO (Service Data Object)** : acces configuration/parametrage, avec
-  confirmation - pense lecture/ecriture d'un parametre de calibration
-- **Object Dictionary** : structure standardisee qui decrit les donnees
-  exposees par chaque noeud, permettant une interoperabilite entre
-  equipements de fabricants differents
-- **NMT (Network Management)** : gestion des etats du reseau (demarrage,
-  arret, surveillance des noeuds)
+### Couches reseau et transport
+- **ARP** : traduit une adresse IP en adresse MAC sur le reseau local,
+  etape necessaire avant tout envoi
+- **IPv4** : adressage et routage entre reseaux
+- **TCP** : transport fiable, avec connexion, accuse de reception,
+  retransmission en cas de perte
+- **UDP** : transport simple, sans connexion ni garantie de livraison,
+  plus leger et plus rapide que TCP
+- **DHCP** : attribution automatique d'une adresse IP par un serveur du
+  reseau, evite une configuration manuelle
+- **DNS** : traduit un nom de domaine en adresse IP
+
+### Pile logicielle
+- **LwIP (Lightweight IP)** : pile TCP/IP legere, tres utilisee dans
+  l'ecosysteme STM32, integrable comme middleware via STM32CubeMX
+- **Sockets** : interface de programmation standard pour ouvrir des
+  connexions TCP/UDP, une fois LwIP configure
 
 ## Configuration a prevoir dans STM32CubeMX (a faire une fois la carte en main)
 
-1. Categorie **Connectivity > FDCAN1** (ou CAN selon la puce) : Mode
-   activee selon le besoin (normal, boucle interne pour test sans second
-   noeud, etc.)
-2. Regler le debit nominal (bit timing : prescaler, segments) selon la
-   frequence du bus visee et l'horloge peripherique reelle
-3. Configurer au moins un filtre de reception (accepter tout, ou filtrer
-   par plage d'identifiants)
-4. Activer les interruptions souhaitees (reception, erreurs, bus-off)
-5. Generer le code, puis ecrire l'emission/reception dans les zones
-   USER CODE
+1. Categorie **Connectivity > ETH** : Mode RMII (le plus courant sur les
+   cartes Nucleo equipees), activer
+2. Verifier l'assignation des broches RMII proposees par CubeMX (elles sont
+   generalement figees par le brochage du PHY sur la carte)
+3. Categorie **Middleware and Software Packs > LWIP** : activer, choisir
+   DHCP ou adresse IP statique selon le besoin
+4. Generer le code ; LwIP fonctionne generalement avec un appel periodique
+   (`MX_LWIP_Process()`) a integrer dans la boucle principale ou une tache
+   dediee si un RTOS est utilise
 
-## Projet prevu (a faire sur materiel reel)
-Deux STM32 communiquant via CAN : un noeud capteur emettant periodiquement
-une valeur, un noeud controleur qui la recoit et reagit (ex. pilotage d'un
-actionneur en fonction de la valeur recue).
+## Projets prevus (a faire sur materiel reel)
+1. STM32 vers PC : serveur TCP simple sur le STM32, verification depuis un
+   PC sur le meme reseau
+2. Extension applicative : connexion a un protocole de plus haut niveau
+   (MQTT par exemple) une fois la base TCP/UDP validee, en lien avec
+   l'experience acquise sur ESP32
 
 ## Prochaine etape
-Phase 14 (Ethernet), meme format documentaire prevu.
+Phase 15 (USB), meme format documentaire prevu.
