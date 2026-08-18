@@ -1,80 +1,54 @@
-# Phase 16 — Basse consommation
+# Phase 17 — Stockage : CRC, Flash/EEPROM, FatFS
 
-## Statut
-Non simulable. Le peripherique PWR (Power Control), qui gere les modes basse
-consommation, apparait comme non implemente dans le tableau de
-fonctionnalites officiel de Wokwi pour cette carte. Cette phase reste
-theorique jusqu'a l'acquisition d'une carte physique (voir phase 11 pour
-la recommandation materielle : Nucleo-H563ZI).
+## CRC — STATUT : teste et fonctionnel
+Le peripherique CRC materiel de cette puce est simule par Wokwi. Test
+implemente : calcul du CRC-32 d'une meme chaine deux fois de suite (avec
+reinitialisation entre les deux), verification que le resultat est identique
+- preuve d'un calcul deterministe et reproductible, sans avoir besoin de
+connaitre a l'avance la valeur CRC exacte attendue.
 
-## Objectif de la phase
-Comprendre les differents niveaux de mise en veille disponibles sur STM32,
-leurs compromis respectifs (consommation vs temps de reveil vs etat
-conserve), et mettre en oeuvre un systeme qui dort la majeure partie du
-temps et ne se reveille que lorsque necessaire.
+### Notions apprises (CRC)
+- Le CRC materiel dispense de calculer un CRC en logiciel (plus lent, plus
+  de code) - on ecrit les octets/mots dans DR, le resultat est disponible
+  immediatement en lecture
+- CRC_CR_RESET : revient a la valeur d'initialisation avant un nouveau calcul
+- Cette famille supporte plusieurs tailles de polynome (32/16/8 bits,
+  7 bits non supporte) - ici, taille par defaut (32 bits, CRC-32 standard)
 
-## Notions fondamentales
+## Flash / EEPROM emulation — STATUT : non teste
+Ecriture/effacement de la memoire Flash non confirmes dans le tableau de
+fonctionnalites Wokwi (non liste, contrairement au CRC). Traite en
+documentation plutot qu'en pratique, pour eviter un risque de session de
+diagnostic prolongee sur un point non garanti par l'outil
 
-- **Sleep** : seul le coeur s'arrete, les peripheriques et l'horloge
-  principale restent actifs. Reveil quasi instantane (sur n'importe quelle
-  interruption), consommation reduite mais modestement
-- **Stop** : la plupart des horloges s'arretent (dont l'horloge principale),
-  la RAM et les registres sont conserves. Consommation plus basse
-  qu'en Sleep, mais reveil plus lent (le temps de reconfigurer l'horloge
-  principale) et moins de sources de reveil disponibles (generalement EXTI,
-  RTC)
-- **Standby** : consommation la plus basse, mais la RAM n'est pas conservee
-  - au reveil, le programme redemarre depuis zero, comme apres un reset.
-  Seuls quelques registres de sauvegarde survivent, prevus specifiquement
-  pour conserver un minimum d'etat entre deux cycles Standby
-- **RTC (Real-Time Clock)** : horloge continue meme dans les modes les plus
-  profonds (alimentee separement) - source de reveil privilegiee pour un
-  reveil periodique programme a l'avance (ex. toutes les heures)
-- **LPTIM (Low-Power Timer)** : timer capable de fonctionner avec une
-  horloge lente pendant les modes basse consommation, alternative a la RTC
-  pour des reveils plus frequents
-- **Sources de reveil** : varient selon le mode choisi - un bouton (EXTI)
-  fonctionne dans tous les modes, un timer classique non-LP ne fonctionne
-  pas en Stop/Standby (son horloge est coupee)
+### Notions a retenir
+- La Flash s'efface par page/secteur entiere, jamais par octet individuel -
+  ecrire un seul octet demande d'effacer puis reecrire toute la page
+- "EEPROM emulation" : technique logicielle qui simule une memoire
+  reinscriptible octet par octet en utilisant plusieurs pages Flash en
+  rotation, pour repartir l'usure (wear leveling) sur une memoire qui ne
+  supporte qu'un nombre limite de cycles effacement/ecriture
+- A tester sur materiel reel (Nucleo-H563ZI, phase 11) : HAL_FLASH_Unlock(),
+  effacement de page, programmation, verrouillage
 
-## Compromis a garder en tete
-Chaque mode plus profond economise de l'energie au prix d'un temps de
-reveil plus long et d'un etat conserve plus reduit. Le choix depend de
-l'application : un capteur qui doit reagir en quelques microsecondes a un
-evenement ne peut pas se permettre un Standby ; un capteur qui releve une
-mesure toutes les heures peut se permettre le mode le plus profond
-disponible.
+## FatFS / carte SD — STATUT : non teste ici, plausible plus tard
+Un composant carte SD generique existe sur Wokwi (pilotable en SPI, deja
+confirme fonctionnel dans des exemples Arduino/MicroPython), et le SPI
+fonctionne deja sur cette carte (phase 09). Mais l'integration specifique
+avec le middleware FatFS de STM32Cube n'a jamais ete testee dans cet
+environnement, et represente une combinaison plus complexe (sequence
+d'initialisation SD via SPI, puis couche FatFS par-dessus) avec un risque
+reel de blocage difficile a diagnostiquer. Laisse en theorie ici par choix,
+pas par impossibilite averee — a retenter isolement si l'envie est la.
 
-## Configuration a prevoir dans STM32CubeMX (a faire une fois la carte en main)
+### Configuration a prevoir dans STM32CubeMX (si tente plus tard)
+1. Categorie **Middleware and Software Packs > FATFS** : activer, mode
+   User-defined ou SD (selon le driver bas niveau utilise)
+2. SPI deja configure (comme en phase 09) pour porter la communication
+   avec la carte SD
+3. Fournir les fonctions de bas niveau (lecture/ecriture de bloc) attendues
+   par la couche FatFS, generalement un fichier utilisateur a completer
 
-1. Categorie **System Core > RTC** : activer si un reveil periodique
-   programme est necessaire, configurer une alarme ou un wake-up timer
-2. Dans le code applicatif, appeler la fonction HAL correspondant au mode
-   souhaite (`HAL_PWR_EnterSLEEPMode()`, `HAL_PWR_EnterSTOPMode()`,
-   `HAL_PWR_EnterSTANDBYMode()`)
-3. Verifier avant mise en veille profonde que toutes les sources de reveil
-   necessaires sont bien configurees et actives - un Stop/Standby sans
-   source de reveil valide bloque le systeme indefiniment
-4. Pour Standby : identifier au demarrage si le reset provient d'un reveil
-   Standby (registre de flag dedie) pour adapter le comportement du
-   programme en consequence
-
-## Projet prevu (a faire sur materiel reel)
-Capteur autonome : releve une mesure (ex. temperature via ADC), l'envoie ou
-la stocke, puis repart en Stop ou Standby jusqu'au prochain reveil
-periodique programme via la RTC. Mesurer la consommation reelle (a
-l'ampèremetre) dans chaque mode pour comparer concretement les compromis
-theoriques ci-dessus.
-
-## Notions transferables
-Le principe general (niveaux de veille progressifs, sources de reveil
-limitees selon la profondeur, RTC comme reference de temps persistante) se
-retrouve sur la quasi-totalite des microcontroleurs bas-consommation,
-STM32 ou non - seuls les noms de registres et modes exacts different.
-
-## Bilan du bloc theorique (phases 11 a 16)
-Ces six phases (DMA, watchdogs, CAN, Ethernet, USB, basse consommation)
-cloturent le bloc de la formation non realisable en simulation sur cette
-carte. Elles seront reprises en pratique a l'acquisition de la Nucleo-H563ZI
-mentionnee en phase 11, qui couvre l'integralite des peripheriques
-necessaires. La formation reprend en pratique des la phase 17 (stockage).
+## Prochaine etape
+Phase 18 (FreeRTOS) — retour a un rythme pratique complet, cœur + SysTick
+deja simules, bases deja connues via l'experience ESP32.

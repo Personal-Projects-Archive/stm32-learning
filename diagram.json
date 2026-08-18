@@ -3,24 +3,8 @@
   "author": "Yassine",
   "editor": "wokwi",
   "parts": [
-    { "type": "board-st-nucleo-c031c6", "id": "nucleo", "top": 0, "left": 0, "attrs": {} },
-    { "type": "wokwi-mpu6050", "id": "imu1", "top": -72.98, "left": 88.72, "attrs": {} },
-    {
-      "type": "wokwi-led",
-      "id": "led1",
-      "top": 82.8,
-      "left": 330.2,
-      "attrs": { "color": "orange" }
-    }
+    { "type": "board-st-nucleo-c031c6", "id": "nucleo", "top": 0, "left": 0, "attrs": {} }
   ],
-  "connections": [
-    [ "imu1:VCC", "nucleo:3V3", "red", [] ],
-    [ "imu1:GND", "nucleo:GND.4", "black", [ "v-28.8", "h-172.72", "v315.97" ] ],
-    [ "imu1:SCL", "nucleo:PA9", "yellow", [ "v-21.78", "h144.08", "v308.95" ] ],
-    [ "imu1:SDA", "nucleo:PA10", "green", [ "v-12.18", "h144.08", "v356.95" ] ],
-    [ "imu1:VCC", "nucleo:3V3.2", "red", [ "v-38.4", "h-191.92", "v297.6", "h67.2" ] ],
-    [ "nucleo:PA6", "led1:A", "orange", [ "h0" ] ],
-    [ "led1:C", "nucleo:GND.7", "black", [ "v0" ] ]
-  ],
+  "connections": [],
   "dependencies": {}
 }
