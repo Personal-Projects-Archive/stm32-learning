@@ -1,66 +1,80 @@
-# Phase 15 — USB
+# Phase 16 — Basse consommation
 
 ## Statut
-Non simulable, et impossible meme en theorie sur la puce utilisee jusqu'ici
-(STM32C031C6) : cette famille d'entree de gamme n'integre pas de peripherique
-USB. Cette phase necessite une puce disposant d'un controleur USB device,
-comme le STM32H563ZI recommande en phase 11.
+Non simulable. Le peripherique PWR (Power Control), qui gere les modes basse
+consommation, apparait comme non implemente dans le tableau de
+fonctionnalites officiel de Wokwi pour cette carte. Cette phase reste
+theorique jusqu'a l'acquisition d'une carte physique (voir phase 11 pour
+la recommandation materielle : Nucleo-H563ZI).
 
 ## Objectif de la phase
-Comprendre le fonctionnement du bus USB cote peripherique (device), et
-mettre en oeuvre le STM32 comme peripherique USB CDC (port serie virtuel) -
-la classe la plus simple a exploiter depuis un PC, sans driver specifique
-a installer.
+Comprendre les differents niveaux de mise en veille disponibles sur STM32,
+leurs compromis respectifs (consommation vs temps de reveil vs etat
+conserve), et mettre en oeuvre un systeme qui dort la majeure partie du
+temps et ne se reveille que lorsque necessaire.
 
 ## Notions fondamentales
 
-- **Host / Device** : l'USB est asymetrique, un hote (generalement un PC)
-  pilote toujours la communication, le peripherique (le STM32 ici) repond -
-  contrairement au CAN ou a l'I2C multi-maitre potentiel
-- **Endpoint** : canal de communication logique entre l'hote et le
-  peripherique, identifie par un numero et une direction (IN vers l'hote,
-  OUT vers le peripherique) - un peripherique USB expose plusieurs endpoints
-  selon les flux qu'il gere
-- **Descripteurs** : structures de donnees que le peripherique presente a
-  l'hote pour se decrire (fabricant, type de peripherique, endpoints
-  disponibles, classe USB...) - l'hote s'appuie dessus pour charger le bon
-  driver automatiquement
-- **Enumeration** : sequence d'echanges au branchement, ou l'hote decouvre
-  le peripherique via ses descripteurs et lui assigne une adresse sur le bus
-- **Classes USB standardisees** : permettent a l'hote d'utiliser un driver
-  generique sans logiciel specifique a installer :
-  - **CDC (Communications Device Class)** : simule un port serie virtuel
-    (COM sous Windows, /dev/ttyACM sous Linux) - approche la plus simple,
-    reconnu nativement par la plupart des systemes d'exploitation
-  - **HID (Human Interface Device)** : simule clavier/souris/manette -
-    driver generique lui aussi, utile pour des peripheriques d'entree
-    personnalises
+- **Sleep** : seul le coeur s'arrete, les peripheriques et l'horloge
+  principale restent actifs. Reveil quasi instantane (sur n'importe quelle
+  interruption), consommation reduite mais modestement
+- **Stop** : la plupart des horloges s'arretent (dont l'horloge principale),
+  la RAM et les registres sont conserves. Consommation plus basse
+  qu'en Sleep, mais reveil plus lent (le temps de reconfigurer l'horloge
+  principale) et moins de sources de reveil disponibles (generalement EXTI,
+  RTC)
+- **Standby** : consommation la plus basse, mais la RAM n'est pas conservee
+  - au reveil, le programme redemarre depuis zero, comme apres un reset.
+  Seuls quelques registres de sauvegarde survivent, prevus specifiquement
+  pour conserver un minimum d'etat entre deux cycles Standby
+- **RTC (Real-Time Clock)** : horloge continue meme dans les modes les plus
+  profonds (alimentee separement) - source de reveil privilegiee pour un
+  reveil periodique programme a l'avance (ex. toutes les heures)
+- **LPTIM (Low-Power Timer)** : timer capable de fonctionner avec une
+  horloge lente pendant les modes basse consommation, alternative a la RTC
+  pour des reveils plus frequents
+- **Sources de reveil** : varient selon le mode choisi - un bouton (EXTI)
+  fonctionne dans tous les modes, un timer classique non-LP ne fonctionne
+  pas en Stop/Standby (son horloge est coupee)
 
-## Lien avec ce qu'on a deja fait
-La phase 08 (UART) a implemente un terminal serie physique sur les broches
-PA2/PA3. Le CDC USB reproduit la meme experience cote logiciel (un port
-serie apparait sur le PC), mais transporte les donnees sur le bus USB plutot
-que sur une liaison serie filaire classique - le code applicatif (lire/
-ecrire des caracteres) reste conceptuellement tres proche.
+## Compromis a garder en tete
+Chaque mode plus profond economise de l'energie au prix d'un temps de
+reveil plus long et d'un etat conserve plus reduit. Le choix depend de
+l'application : un capteur qui doit reagir en quelques microsecondes a un
+evenement ne peut pas se permettre un Standby ; un capteur qui releve une
+mesure toutes les heures peut se permettre le mode le plus profond
+disponible.
 
 ## Configuration a prevoir dans STM32CubeMX (a faire une fois la carte en main)
 
-1. Categorie **Connectivity > USB** (ou **USB_OTG_FS** selon la puce) :
-   activer en mode Device
-2. Categorie **Middleware and Software Packs > USB_DEVICE** : Class for
-   FS IP = **Communication Device Class (Virtual Port Com)**
-3. Verifier les parametres du descripteur (VID/PID par defaut fournis par
-   ST pour le developpement, a remplacer par des identifiants propres pour
-   un produit final)
-4. Generer le code ; l'envoi de donnees se fait via une fonction du type
-   `CDC_Transmit_FS()`, la reception via un callback genere dans
-   `usbd_cdc_if.c`
+1. Categorie **System Core > RTC** : activer si un reveil periodique
+   programme est necessaire, configurer une alarme ou un wake-up timer
+2. Dans le code applicatif, appeler la fonction HAL correspondant au mode
+   souhaite (`HAL_PWR_EnterSLEEPMode()`, `HAL_PWR_EnterSTOPMode()`,
+   `HAL_PWR_EnterSTANDBYMode()`)
+3. Verifier avant mise en veille profonde que toutes les sources de reveil
+   necessaires sont bien configurees et actives - un Stop/Standby sans
+   source de reveil valide bloque le systeme indefiniment
+4. Pour Standby : identifier au demarrage si le reset provient d'un reveil
+   Standby (registre de flag dedie) pour adapter le comportement du
+   programme en consequence
 
 ## Projet prevu (a faire sur materiel reel)
-STM32 reconnu comme port serie virtuel par le PC des le branchement, sans
-driver a installer - verification par un terminal serie classique (comme
-celui utilise en phase 08), mais cette fois via USB plutot que par le
-ST-LINK.
+Capteur autonome : releve une mesure (ex. temperature via ADC), l'envoie ou
+la stocke, puis repart en Stop ou Standby jusqu'au prochain reveil
+periodique programme via la RTC. Mesurer la consommation reelle (a
+l'ampèremetre) dans chaque mode pour comparer concretement les compromis
+theoriques ci-dessus.
 
-## Prochaine etape
-Phase 16 (basse consommation), meme format documentaire prevu.
+## Notions transferables
+Le principe general (niveaux de veille progressifs, sources de reveil
+limitees selon la profondeur, RTC comme reference de temps persistante) se
+retrouve sur la quasi-totalite des microcontroleurs bas-consommation,
+STM32 ou non - seuls les noms de registres et modes exacts different.
+
+## Bilan du bloc theorique (phases 11 a 16)
+Ces six phases (DMA, watchdogs, CAN, Ethernet, USB, basse consommation)
+cloturent le bloc de la formation non realisable en simulation sur cette
+carte. Elles seront reprises en pratique a l'acquisition de la Nucleo-H563ZI
+mentionnee en phase 11, qui couvre l'integralite des peripheriques
+necessaires. La formation reprend en pratique des la phase 17 (stockage).
