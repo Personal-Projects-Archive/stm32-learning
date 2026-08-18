@@ -1,69 +1,66 @@
-# Phase 14 — Ethernet
+# Phase 15 — USB
 
 ## Statut
 Non simulable, et impossible meme en theorie sur la puce utilisee jusqu'ici
-(STM32C031C6) : cette famille d'entree de gamme n'integre pas de controleur
-Ethernet. Cette phase necessite une puce disposant du peripherique MAC
-Ethernet, comme le STM32H563ZI recommande en phase 11.
+(STM32C031C6) : cette famille d'entree de gamme n'integre pas de peripherique
+USB. Cette phase necessite une puce disposant d'un controleur USB device,
+comme le STM32H563ZI recommande en phase 11.
 
 ## Objectif de la phase
-Comprendre la pile reseau depuis la couche materielle jusqu'a la couche
-applicative, et mettre en oeuvre une communication IP (TCP ou UDP) depuis
-un STM32.
+Comprendre le fonctionnement du bus USB cote peripherique (device), et
+mettre en oeuvre le STM32 comme peripherique USB CDC (port serie virtuel) -
+la classe la plus simple a exploiter depuis un PC, sans driver specifique
+a installer.
 
 ## Notions fondamentales
 
-### Couche materielle
-- **MAC (Media Access Control)** : bloc integre au microcontroleur, gere
-  la mise en trame Ethernet et l'acces au support
-- **PHY (Physical layer)** : circuit externe (ou integre selon les cartes)
-  qui convertit les signaux numeriques du MAC en signaux electriques sur le
-  cable, et inversement
-- **RMII / MII** : interfaces standardisees entre le MAC (dans le
-  microcontroleur) et le PHY (souvent un circuit externe) - RMII utilise
-  moins de broches que MII, au prix d'une frequence d'horloge plus elevee
-  sur ces broches
-- **Trame Ethernet** : adresse MAC destination, adresse MAC source,
-  type/longueur, donnees utiles, controle d'erreur (CRC)
-- **Adresse MAC** : identifiant unique 48 bits de l'interface reseau,
-  distinct de l'adresse IP (couche differente)
+- **Host / Device** : l'USB est asymetrique, un hote (generalement un PC)
+  pilote toujours la communication, le peripherique (le STM32 ici) repond -
+  contrairement au CAN ou a l'I2C multi-maitre potentiel
+- **Endpoint** : canal de communication logique entre l'hote et le
+  peripherique, identifie par un numero et une direction (IN vers l'hote,
+  OUT vers le peripherique) - un peripherique USB expose plusieurs endpoints
+  selon les flux qu'il gere
+- **Descripteurs** : structures de donnees que le peripherique presente a
+  l'hote pour se decrire (fabricant, type de peripherique, endpoints
+  disponibles, classe USB...) - l'hote s'appuie dessus pour charger le bon
+  driver automatiquement
+- **Enumeration** : sequence d'echanges au branchement, ou l'hote decouvre
+  le peripherique via ses descripteurs et lui assigne une adresse sur le bus
+- **Classes USB standardisees** : permettent a l'hote d'utiliser un driver
+  generique sans logiciel specifique a installer :
+  - **CDC (Communications Device Class)** : simule un port serie virtuel
+    (COM sous Windows, /dev/ttyACM sous Linux) - approche la plus simple,
+    reconnu nativement par la plupart des systemes d'exploitation
+  - **HID (Human Interface Device)** : simule clavier/souris/manette -
+    driver generique lui aussi, utile pour des peripheriques d'entree
+    personnalises
 
-### Couches reseau et transport
-- **ARP** : traduit une adresse IP en adresse MAC sur le reseau local,
-  etape necessaire avant tout envoi
-- **IPv4** : adressage et routage entre reseaux
-- **TCP** : transport fiable, avec connexion, accuse de reception,
-  retransmission en cas de perte
-- **UDP** : transport simple, sans connexion ni garantie de livraison,
-  plus leger et plus rapide que TCP
-- **DHCP** : attribution automatique d'une adresse IP par un serveur du
-  reseau, evite une configuration manuelle
-- **DNS** : traduit un nom de domaine en adresse IP
-
-### Pile logicielle
-- **LwIP (Lightweight IP)** : pile TCP/IP legere, tres utilisee dans
-  l'ecosysteme STM32, integrable comme middleware via STM32CubeMX
-- **Sockets** : interface de programmation standard pour ouvrir des
-  connexions TCP/UDP, une fois LwIP configure
+## Lien avec ce qu'on a deja fait
+La phase 08 (UART) a implemente un terminal serie physique sur les broches
+PA2/PA3. Le CDC USB reproduit la meme experience cote logiciel (un port
+serie apparait sur le PC), mais transporte les donnees sur le bus USB plutot
+que sur une liaison serie filaire classique - le code applicatif (lire/
+ecrire des caracteres) reste conceptuellement tres proche.
 
 ## Configuration a prevoir dans STM32CubeMX (a faire une fois la carte en main)
 
-1. Categorie **Connectivity > ETH** : Mode RMII (le plus courant sur les
-   cartes Nucleo equipees), activer
-2. Verifier l'assignation des broches RMII proposees par CubeMX (elles sont
-   generalement figees par le brochage du PHY sur la carte)
-3. Categorie **Middleware and Software Packs > LWIP** : activer, choisir
-   DHCP ou adresse IP statique selon le besoin
-4. Generer le code ; LwIP fonctionne generalement avec un appel periodique
-   (`MX_LWIP_Process()`) a integrer dans la boucle principale ou une tache
-   dediee si un RTOS est utilise
+1. Categorie **Connectivity > USB** (ou **USB_OTG_FS** selon la puce) :
+   activer en mode Device
+2. Categorie **Middleware and Software Packs > USB_DEVICE** : Class for
+   FS IP = **Communication Device Class (Virtual Port Com)**
+3. Verifier les parametres du descripteur (VID/PID par defaut fournis par
+   ST pour le developpement, a remplacer par des identifiants propres pour
+   un produit final)
+4. Generer le code ; l'envoi de donnees se fait via une fonction du type
+   `CDC_Transmit_FS()`, la reception via un callback genere dans
+   `usbd_cdc_if.c`
 
-## Projets prevus (a faire sur materiel reel)
-1. STM32 vers PC : serveur TCP simple sur le STM32, verification depuis un
-   PC sur le meme reseau
-2. Extension applicative : connexion a un protocole de plus haut niveau
-   (MQTT par exemple) une fois la base TCP/UDP validee, en lien avec
-   l'experience acquise sur ESP32
+## Projet prevu (a faire sur materiel reel)
+STM32 reconnu comme port serie virtuel par le PC des le branchement, sans
+driver a installer - verification par un terminal serie classique (comme
+celui utilise en phase 08), mais cette fois via USB plutot que par le
+ST-LINK.
 
 ## Prochaine etape
-Phase 15 (USB), meme format documentaire prevu.
+Phase 16 (basse consommation), meme format documentaire prevu.
