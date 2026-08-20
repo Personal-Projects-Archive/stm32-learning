@@ -1,54 +1,71 @@
-# Phase 17 — Stockage : CRC, Flash/EEPROM, FatFS
+# FreeRTOS : deux taches concurrentes, ISR -> Queue -> Task (phase 18)
 
-## CRC — STATUT : teste et fonctionnel
-Le peripherique CRC materiel de cette puce est simule par Wokwi. Test
-implemente : calcul du CRC-32 d'une meme chaine deux fois de suite (avec
-reinitialisation entre les deux), verification que le resultat est identique
-- preuve d'un calcul deterministe et reproductible, sans avoir besoin de
-connaitre a l'avance la valeur CRC exacte attendue.
+## Objectif
+Integrer FreeRTOS cote STM32Cube (les bases - taches, scheduler, priorites,
+queues - sont deja connues via l'experience ESP32) : creation de taches,
+priorites, et le pont ISR -> queue -> tache reveillee.
 
-### Notions apprises (CRC)
-- Le CRC materiel dispense de calculer un CRC en logiciel (plus lent, plus
-  de code) - on ecrit les octets/mots dans DR, le resultat est disponible
-  immediatement en lecture
-- CRC_CR_RESET : revient a la valeur d'initialisation avant un nouveau calcul
-- Cette famille supporte plusieurs tailles de polynome (32/16/8 bits,
-  7 bits non supporte) - ici, taille par defaut (32 bits, CRC-32 standard)
+## Cible
+STM32C031C6 (Nucleo-64), simule sur Wokwi. Bouton externe sur PC13 (meme
+montage que phase 02).
 
-## Flash / EEPROM emulation — STATUT : non teste
-Ecriture/effacement de la memoire Flash non confirmes dans le tableau de
-fonctionnalites Wokwi (non liste, contrairement au CRC). Traite en
-documentation plutot qu'en pratique, pour eviter un risque de session de
-diagnostic prolongee sur un point non garanti par l'outil
+## Middleware et interface
+FreeRTOS integre via le pack **X-CUBE-FREERTOS** (obligatoire sur la famille
+C0, pas de middleware FreeRTOS natif sur cette famille contrairement a
+d'autres series STM32). Interface **CMSIS-RTOS2** (imposee par ce pack) :
+API differente de la FreeRTOS "native" utilisee sur ESP-IDF (`osThreadNew`,
+`osMessageQueuePut`, `osDelay` au lieu de `xTaskCreate`, `xQueueSend`,
+`vTaskDelay`) - les concepts restent identiques, pas les noms de fonctions.
 
-### Notions a retenir
-- La Flash s'efface par page/secteur entiere, jamais par octet individuel -
-  ecrire un seul octet demande d'effacer puis reecrire toute la page
-- "EEPROM emulation" : technique logicielle qui simule une memoire
-  reinscriptible octet par octet en utilisant plusieurs pages Flash en
-  rotation, pour repartir l'usure (wear leveling) sur une memoire qui ne
-  supporte qu'un nombre limite de cycles effacement/ecriture
-- A tester sur materiel reel (Nucleo-H563ZI, phase 11) : HAL_FLASH_Unlock(),
-  effacement de page, programmation, verrouillage
+## Configuration
+- **TaskButton** (fonction generee : `StartDefaultTask`, priorite High) :
+  bloquee sur `osMessageQueueGet`, reveillee par la queue, bascule LD4
+- **TaskBlink** (`StartTaskBlink`, priorite Normal) : boucle independante,
+  `osDelay(500)`
+- **QueueButton** : pont entre l'interruption EXTI13 et TaskButton, item
+  type `uint32_t`
+- Stack size portee a 256 mots par tache (128 par defaut insuffisant,
+  corruption memoire silencieuse observee avec la valeur par defaut)
+- Base de temps HAL deplacee du SysTick vers **TIM17** (recommandation
+  standard des lors qu'un RTOS est utilise, evite un conflit entre le tick
+  FreeRTOS et la base de temps HAL)
+- Anti-rebond logiciel sur l'ISR (horodatage HAL_GetTick, fenetre 200ms)
 
-## FatFS / carte SD — STATUT : non teste ici, plausible plus tard
-Un composant carte SD generique existe sur Wokwi (pilotable en SPI, deja
-confirme fonctionnel dans des exemples Arduino/MicroPython), et le SPI
-fonctionne deja sur cette carte (phase 09). Mais l'integration specifique
-avec le middleware FatFS de STM32Cube n'a jamais ete testee dans cet
-environnement, et represente une combinaison plus complexe (sequence
-d'initialisation SD via SPI, puis couche FatFS par-dessus) avec un risque
-reel de blocage difficile a diagnostiquer. Laisse en theorie ici par choix,
-pas par impossibilite averee — a retenter isolement si l'envie est la.
+## Structure
+- `Core/Src/app_freertos.c` : corps des taches (genere par CubeMX, USER CODE
+  remplies)
+- `Core/Src/main.c` : config EXTI13 (USER CODE BEGIN 2)
+- `Core/Src/stm32c0xx_it.c` : `osMessageQueuePut` + anti-rebond dans le
+  handler EXTI4_15_IRQn (zone USER CODE 1 uniquement - la zone 0 contient
+  le code genere pour le bouton embarque de la carte, laissee intacte)
 
-### Configuration a prevoir dans STM32CubeMX (si tente plus tard)
-1. Categorie **Middleware and Software Packs > FATFS** : activer, mode
-   User-defined ou SD (selon le driver bas niveau utilise)
-2. SPI deja configure (comme en phase 09) pour porter la communication
-   avec la carte SD
-3. Fournir les fonctions de bas niveau (lecture/ecriture de bloc) attendues
-   par la couche FatFS, generalement un fichier utilisateur a completer
+## Test
+PA6 clignote en continu (TaskBlink, tache independante). LD4 bascule a
+chaque appui sur le bouton (TaskButton, reveillee via la queue depuis
+l'interruption).
 
-## Prochaine etape
-Phase 18 (FreeRTOS) — retour a un rythme pratique complet, cœur + SysTick
-deja simules, bases deja connues via l'experience ESP32.
+## Difficultes rencontrees et solutions
+- Fonction generee nommee StartDefaultTask malgre le renommage de la tache en TaskButton dans CubeMX
+- Code duplique par erreur dans deux zones USER CODE du meme handler (EXTI4_15_IRQn 0 et 1) -> deux appels concurrents a osMessageQueuePut
+- Rebond observe sur le bouton simule -> anti-rebond logiciel ajoute (meme technique qu'en phase 02)
+- TaskBlink ne demarrait jamais (PA6) : cause reelle identifiee via l'ecran FreeRTOS Heap Usage de CubeMX -> configTOTAL_HEAP_SIZE insuffisant (0 octet disponible affiche), la seconde creation de tache echouait (osThreadNew renvoie NULL sans planter). Corrige en augmentant TOTAL_HEAP_SIZE a 8192 dans Config parameters.
+- Ajout d'une verification explicite (handle == NULL) apres les creations de tache, pour detecter ce genre d'echec immediatement au lieu d'un comportement partiel difficile a diagnostiquer
+
+## Notions apprises
+- X-CUBE-FREERTOS vs middleware FreeRTOS natif : depend de la famille STM32
+- CMSIS-RTOS2 vs API FreeRTOS native : memes concepts, noms de fonctions
+  differents
+- CMSIS-RTOS2 gere automatiquement le contexte ISR (pas de variante *FromISR
+  a ecrire manuellement, contrairement a la FreeRTOS API native)
+- Toujours verifier le nom reel de la fonction generee (CubeMX peut garder
+  un nom du type `StartDefaultTask` meme apres renommage de la tache)
+- Le corps des taches vit dans app_freertos.c, pas main.c
+- Necessite de changer la base de temps HAL (SysTick -> timer dedie) des
+  qu'un RTOS est utilise
+- Une pile de tache trop petite corrompt silencieusement la memoire plutot
+  que de planter, symptome difficile a distinguer d'un autre bug
+
+## Limites / ameliorations possibles
+Deux taches seulement, pas de mutex/semaphore demontres ici (aucune
+ressource partagee entre les deux) - a illustrer en phase 19 (architecture
+RTOS multi-taches).

@@ -3,8 +3,27 @@
   "author": "Yassine",
   "editor": "wokwi",
   "parts": [
-    { "type": "board-st-nucleo-c031c6", "id": "nucleo", "top": 0, "left": 0, "attrs": {} }
+    { "type": "board-st-nucleo-c031c6", "id": "nucleo", "top": 0, "left": 0, "attrs": {} },
+    {
+      "type": "wokwi-pushbutton",
+      "id": "button1",
+      "top": 227,
+      "left": -86.4,
+      "attrs": { "color": "green" }
+    },
+    {
+      "type": "wokwi-led",
+      "id": "led1",
+      "top": 111.6,
+      "left": 282.2,
+      "attrs": { "color": "red" }
+    }
   ],
-  "connections": [],
+  "connections": [
+    [ "nucleo:PC13", "button1:1.r", "green", [ "h0" ] ],
+    [ "nucleo:GND.4", "button1:2.l", "black", [ "h-39.38", "v-18.37", "h-76.8", "v57.4" ] ],
+    [ "nucleo:PA6", "led1:A", "green", [ "h0" ] ],
+    [ "led1:C", "nucleo:GND.8", "black", [ "v0" ] ]
+  ],
   "dependencies": {}
 }
