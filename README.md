@@ -1,31 +1,32 @@
-# Architecture RTOS : pipeline Sensor -> Control -> Monitor (phase 19)
+# Debugging : breakpoints, watch, session GDB via Wokwi (phase 20)
 
 ## Objectif
-Concevoir une architecture a trois taches avec roles distincts, reliees par
-une queue (pipeline de donnees) et un mutex (ressource partagee) - les deux
-mecanismes non illustres en phase 18.
+Apprendre a utiliser le debugger integre (breakpoints, watch, call stack)
+plutot que de diagnostiquer a l'aveugle par clignotements codes, comme cela
+a ete necessaire a plusieurs reprises plus tot dans cette formation.
 
-## Architecture
-TaskSensor (lit ADC PA0) --Queue--> TaskControl (pilote PWM PA6, ecrit dans
-une variable partagee) --Mutex--> TaskMonitor (lit la variable partagee,
-allume LD4 selon un seuil)
-
-## Configuration
-- QueueSensorControl : taille 1, item uint32_t
-- MutexShared : protege la variable partagee entre TaskControl et TaskMonitor
-- Stack size 256 mots par tache, TOTAL_HEAP_SIZE 8192
-
-## Test
-Potentiometre tourne -> LD4 s'allume au-dessus de la moitie de course.
+## Procedure de lancement (specifique a cet environnement)
+1. Preset CMake sur Debug
+2. Ctrl+Shift+P -> "Wokwi: Start Simulator and Wait for Debugger"
+3. F5 pour attacher le debugger (configuration deja presente dans
+   .vscode/launch.json, generee avec le projet)
 
 ## Notions apprises
-- Difference entre queue (transfert de donnees, pipeline) et mutex
-  (protection d'une ressource lue/ecrite par plusieurs taches)
-- Une variable partagee sans mutex est une source de corruption/incoherence
-  des que plus d'une tache y touche
-- Conception d'architecture : donner un role et une priorite distincts a
-  chaque tache plutot que tout mettre dans une seule boucle
+- Breakpoint (arret sur une ligne) vs watchpoint (arret sur un changement
+  de valeur)
+- Panneaux Variables/Watch pour inspecter l'etat du programme fige
+- HardFault/BusFault/UsageFault/MemManageFault : types de fautes materielles
+  Cortex-M, chacune avec une cause typique differente
+- Un stack overflow ou une corruption memoire ne plante pas -
+  comportement incoherent sans message, a chercher via watch/breakpoints
+  plutot qu'en supposant
+
+## Application
+Utilise pour rouvrir l'incident non resolu de la phase 19 (chaine
+Mutex -> TaskMonitor)
 
 ## Limites / ameliorations possibles
-Pas de TaskLogger ni TaskWatchdog demontres ici (mentionnes dans le
-programme d'origine) - extension possible si besoin plus tard.
+Pas de vue SFR (registres de peripheriques nommes) confirmee disponible
+dans cet environnement - l'extension Cortex-Debug (Marus25) est mentionnee
+par la documentation officielle comme alternative offrant cette vue, non
+testee ici.
