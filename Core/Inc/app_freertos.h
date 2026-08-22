@@ -54,17 +54,20 @@ extern "C" {
 /* USER CODE BEGIN EM */
 
 /* USER CODE END EM */
-extern osThreadId_t TaskButtonHandle;
-extern osThreadId_t TaskBlinkHandle;
-extern osMessageQueueId_t QueueButtonHandle;
+extern osThreadId_t TaskSensorHandle;
+extern osThreadId_t TaskControlHandle;
+extern osThreadId_t TaskMonitorHandle;
+extern osMutexId_t MutexSharedHandle;
+extern osMessageQueueId_t QueueSensorControlHandle;
 
 /* Exported function prototypes -----------------------------------------------*/
 /* USER CODE BEGIN FunctionPrototypes */
 
 /* USER CODE END FunctionPrototypes */
 
-void StartDefaultTask(void *argument);
-void StartTaskBlink(void *argument);
+void StartTaskSensor(void *argument);
+void StartTaskControl(void *argument);
+void StartTaskMonitor(void *argument);
 
 void MX_FREERTOS_Init(void); /* (MISRA C 2004 rule 8.1) */
 

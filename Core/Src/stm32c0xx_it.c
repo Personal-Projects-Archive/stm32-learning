@@ -24,7 +24,6 @@
 /* USER CODE BEGIN Includes */
 #include "cmsis_os2.h"
 
-extern osMessageQueueId_t QueueButtonHandle;
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -113,20 +112,7 @@ void EXTI4_15_IRQHandler(void)
   /* USER CODE END EXTI4_15_IRQn 0 */
   BSP_PB_IRQHandler(BUTTON_USER);
   /* USER CODE BEGIN EXTI4_15_IRQn 1 */
-  if (EXTI->FPR1 & (1UL << 13))
-  {
-    EXTI->FPR1 = (1UL << 13);
 
-    static uint32_t last_tick = 0;
-    uint32_t now = HAL_GetTick();
-
-    if ((now - last_tick) > 200)
-    {
-      uint32_t valeur = 1;
-      osMessageQueuePut(QueueButtonHandle, &valeur, 0, 0);
-      last_tick = now;
-    }
-  }
   /* USER CODE END EXTI4_15_IRQn 1 */
 }
 
