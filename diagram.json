@@ -3,17 +3,8 @@
   "author": "Yassine",
   "editor": "wokwi",
   "parts": [
-    { "type": "board-st-nucleo-c031c6", "id": "nucleo", "top": 0, "left": 0, "attrs": {} },
-    { "type": "wokwi-potentiometer", "id": "pot1", "top": 104.3, "left": -105.8, "attrs": {} },
-    { "type": "wokwi-led", "id": "led1", "top": 102, "left": 291.8, "attrs": { "color": "cyan" } }
+    { "type": "board-st-nucleo-c031c6", "id": "nucleo", "top": 0, "left": 0, "attrs": {} }
   ],
-  "connections": [
-    [ "pot1:SIG", "nucleo:PA0", "green", [ "v76.8", "h47.6", "v-0.83" ] ],
-    [ "pot1:VCC", "nucleo:3V3", "red", [] ],
-    [ "nucleo:GND.2", "pot1:GND", "black", [ "h-39.38", "v-56.77", "h-96", "v115.2", "h38.4" ] ],
-    [ "pot1:VCC", "nucleo:3V3.2", "red", [ "v0" ] ],
-    [ "nucleo:PA6", "led1:A", "green", [ "h73.17", "v-8.77" ] ],
-    [ "led1:C", "nucleo:GND.8", "black", [ "v0" ] ]
-  ],
+  "connections": [],
   "dependencies": {}
 }

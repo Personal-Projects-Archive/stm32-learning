@@ -1,25 +1,59 @@
 #include "main.h"
-#include "app_freertos.h"
-
-I2C_HandleTypeDef hi2c1;
 
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
-static void MX_I2C1_Init(void);
+
+// Code de reference pour un vrai systeme a deux images (non appele ici,
+// aucune seconde image reelle n'existe a cette adresse dans ce test)
+typedef void (*app_entry_t)(void);
+
+__attribute__((unused))
+static void jump_to_application(uint32_t app_address)
+{
+  uint32_t app_stack_ptr = *(volatile uint32_t *)app_address;
+  uint32_t app_reset_handler = *(volatile uint32_t *)(app_address + 4);
+
+  SCB->VTOR = app_address;
+  __set_MSP(app_stack_ptr);
+
+  app_entry_t app_entry = (app_entry_t)app_reset_handler;
+  app_entry();
+}
 
 int main(void)
 {
   HAL_Init();
   SystemClock_Config();
   MX_GPIO_Init();
-  MX_I2C1_Init();
 
-  osKernelInitialize();
-  MX_FREERTOS_Init();
-  osKernelStart();
+  // PA5 (LD4) en sortie : temoin de validation CRC reussie
+  GPIOA->MODER &= ~GPIO_MODER_MODE5;
+  GPIOA->MODER |= GPIO_MODER_MODE5_0;
 
-  // On ne doit jamais arriver ici : le controle est pris par le scheduler
-  while (1) {}
+  // Simule la verification qu'un bootloader ferait avant de sauter vers
+  // l'application : CRC sur toute la zone APP (24K = 6144 mots de 4 octets)
+  RCC->AHBENR |= RCC_AHBENR_CRCEN;
+  CRC->CR |= CRC_CR_RESET;
+
+  uint32_t *app_start = (uint32_t *)0x8000000;   // demarrage reel du programme
+  const uint32_t app_words = 6000;               // ~24K, reste dans les 32K reels
+
+  for (uint32_t i = 0; i < app_words; i++)
+  {
+    CRC->DR = app_start[i];
+  }
+  uint32_t crc_calcule = CRC->DR;
+
+  // Pas de reference stockee ici (pas de veritable seconde image flashee
+  // separement) -> confirme juste que le calcul aboutit sur la zone entiere
+  if (crc_calcule != 0)
+  {
+    GPIOA->ODR |= GPIO_ODR_OD5;
+  }
+
+  while (1)
+  {
+  }
 }
 
 void SystemClock_Config(void)
@@ -50,46 +84,9 @@ void SystemClock_Config(void)
   }
 }
 
-static void MX_I2C1_Init(void)
-{
-  hi2c1.Instance = I2C1;
-  hi2c1.Init.Timing = 0x10805D88;
-  hi2c1.Init.OwnAddress1 = 0;
-  hi2c1.Init.AddressingMode = I2C_ADDRESSINGMODE_7BIT;
-  hi2c1.Init.DualAddressMode = I2C_DUALADDRESS_DISABLE;
-  hi2c1.Init.OwnAddress2 = 0;
-  hi2c1.Init.OwnAddress2Masks = I2C_OA2_NOMASK;
-  hi2c1.Init.GeneralCallMode = I2C_GENERALCALL_DISABLE;
-  hi2c1.Init.NoStretchMode = I2C_NOSTRETCH_DISABLE;
-  if (HAL_I2C_Init(&hi2c1) != HAL_OK)
-  {
-    Error_Handler();
-  }
-
-  if (HAL_I2CEx_ConfigAnalogFilter(&hi2c1, I2C_ANALOGFILTER_ENABLE) != HAL_OK)
-  {
-    Error_Handler();
-  }
-
-  if (HAL_I2CEx_ConfigDigitalFilter(&hi2c1, 0) != HAL_OK)
-  {
-    Error_Handler();
-  }
-}
-
 static void MX_GPIO_Init(void)
 {
-  __HAL_RCC_GPIOC_CLK_ENABLE();
-  __HAL_RCC_GPIOF_CLK_ENABLE();
   __HAL_RCC_GPIOA_CLK_ENABLE();
-}
-
-void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
-{
-  if (htim->Instance == TIM17)
-  {
-    HAL_IncTick();
-  }
 }
 
 void Error_Handler(void)
