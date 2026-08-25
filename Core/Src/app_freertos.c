@@ -143,6 +143,7 @@ void MX_FREERTOS_Init(void) {
 void StartTaskSensor(void *argument)
 {
   /* USER CODE BEGIN TaskSensor */
+  (void)argument;   // parametre impose par l'API FreeRTOS, non utilise ici
 
   GPIOA->MODER |= GPIO_MODER_MODE0;   // PA0 analogique
 
@@ -196,6 +197,7 @@ void StartTaskSensor(void *argument)
 void StartTaskControl(void *argument)
 {
   /* USER CODE BEGIN TaskControl */
+  (void)argument;   // parametre impose par l'API FreeRTOS, non utilise ici
   // PA6 en Alternate Function 1 = TIM3_CH1 (PWM)
   GPIOA->MODER &= ~GPIO_MODER_MODE6;
   GPIOA->MODER |= GPIO_MODER_MODE6_1;
@@ -239,6 +241,7 @@ void StartTaskControl(void *argument)
 void StartTaskMonitor(void *argument)
 {
   /* USER CODE BEGIN TaskMonitor */
+  (void)argument;   // parametre impose par l'API FreeRTOS, non utilise ici
   GPIOA->MODER &= ~GPIO_MODER_MODE5;
   GPIOA->MODER |= GPIO_MODER_MODE5_0;
   /* Infinite loop */

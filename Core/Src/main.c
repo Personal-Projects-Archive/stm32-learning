@@ -35,11 +35,12 @@ static uint32_t compute_crc(const uint8_t *data, uint32_t size)
   RCC->AHBENR |= RCC_AHBENR_CRCEN;
   CRC->CR |= CRC_CR_RESET;
 
-  uint32_t words = size / 4;
-  const uint32_t *data32 = (const uint32_t *)data;
-  for (uint32_t i = 0; i < words; i++)
+  uint32_t words = size / 4U;
+  for (uint32_t i = 0U; i < words; i++)
   {
-    CRC->DR = data32[i];
+    uint32_t word;
+    memcpy(&word, &data[i * 4U], sizeof(word));   // evite un cast direct non aligne
+    CRC->DR = word;
   }
   return CRC->DR;
 }
@@ -50,9 +51,9 @@ static uint32_t compute_crc_flash(uint32_t address, uint32_t size)
   RCC->AHBENR |= RCC_AHBENR_CRCEN;
   CRC->CR |= CRC_CR_RESET;
 
-  uint32_t words = size / 4;
+  uint32_t words = size / 4U;
   const uint32_t *data32 = (const uint32_t *)address;
-  for (uint32_t i = 0; i < words; i++)
+  for (uint32_t i = 0U; i < words; i++)
   {
     CRC->DR = data32[i];
   }

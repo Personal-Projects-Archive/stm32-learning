@@ -57,6 +57,16 @@ target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE
     # Add user defined symbols
 )
 
+# Add strict compiler warnings (phase 34 - code quality)
+target_compile_options(${CMAKE_PROJECT_NAME} PRIVATE
+    -Wextra
+    -Wconversion
+    -Wshadow
+    -Wundef
+    -Wcast-align
+    -Wswitch-default
+)
+
 # Remove wrong libob.a library dependency when using cpp files
 list(REMOVE_ITEM CMAKE_C_IMPLICIT_LINK_LIBRARIES ob)
 
